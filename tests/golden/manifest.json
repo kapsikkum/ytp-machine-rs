@@ -1,0 +1,80 @@
+{
+  "fixtures": [
+    {
+      "bytes": 5620,
+      "path": "audio.json",
+      "sha256": "326cdc773b6565846e527d3757e0541641fdfaca60a2af39f37578a915692245"
+    },
+    {
+      "bytes": 123524,
+      "path": "audio\\drums.wav",
+      "sha256": "2b3dc21fd75779b08df877d3af59bfe24476adefb5072a4bd0b1e23201b16d54"
+    },
+    {
+      "bytes": 63548,
+      "path": "audio\\gb.wav",
+      "sha256": "67cae0289461ee8d48950e1bbc64fdd951847f771e9ab096449c40f63ddac28b"
+    },
+    {
+      "bytes": 88244,
+      "path": "audio\\master.wav",
+      "sha256": "5406b3287db1eacdd8a11e1dc1a0587d405552d6b34182333412ec8dd790614e"
+    },
+    {
+      "bytes": 63548,
+      "path": "audio\\nes.wav",
+      "sha256": "d8cac9af16a457a9333ff3ff2d090847032197afc09f5302dac2ff5276b62751"
+    },
+    {
+      "bytes": 151748,
+      "path": "audio\\opl2.wav",
+      "sha256": "72880a109bb2aa6a47cb9de9c97732c0c3ebb7c50e0af463b77468e6fef55a4c"
+    },
+    {
+      "bytes": 151748,
+      "path": "audio\\opl3.wav",
+      "sha256": "52d2f38e73a0b9a41c87ceebfdbcd57a4a140f89d3392e0f1c0c9ce91281d052"
+    },
+    {
+      "bytes": 169388,
+      "path": "audio\\sid.wav",
+      "sha256": "cf3a9ff19f3438b531b1bca92fa902388d84744a25b1cb26fb3f69e9e9a6a600"
+    },
+    {
+      "bytes": 63548,
+      "path": "audio\\sms.wav",
+      "sha256": "886bffe2659e5e377de53e94c7de290c654731580e761635dbfd14ddef67fd9d"
+    },
+    {
+      "bytes": 88244,
+      "path": "audio\\snes.wav",
+      "sha256": "361c761639cce647973e278531c512eafcf2916022fa1451e77a78171d8f98a7"
+    },
+    {
+      "bytes": 127052,
+      "path": "audio\\ym2612.wav",
+      "sha256": "57763cfb3c5bf4368b2800680da330fa8ee129982ee44e72a856cb06c9597706"
+    },
+    {
+      "bytes": 15209,
+      "path": "phonemes.json",
+      "sha256": "f1bd1b0e7e36bc78e2220db68007a7f6a99ce5dad186204715a05873b2c13b77"
+    },
+    {
+      "bytes": 1481,
+      "path": "pitch.json",
+      "sha256": "f092a1e4ed51d1775e133200cfe2e8d28b36d2fed7e25911c04ed097f8c546f1"
+    },
+    {
+      "bytes": 30286,
+      "path": "splice.json",
+      "sha256": "579206db130c95a3aedbfaaa4c782100e4a5c0b587244552231b893932d023d2"
+    },
+    {
+      "bytes": 52769,
+      "path": "tokens.json",
+      "sha256": "2f65d79b79b207edc1f9aff1b0cd0b94f389b4b90909fec0be5635c9633dfcda"
+    }
+  ],
+  "seed": 20260913
+}

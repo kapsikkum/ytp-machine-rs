@@ -1,0 +1,75 @@
+{
+  "detect": {
+    "f0": 220.000008988,
+    "note": "A3",
+    "stability": 0.000368896,
+    "voiced_ratio": 1.0
+  },
+  "input": {
+    "amplitude": 0.4,
+    "hz": 220.0,
+    "kind": "sine",
+    "samples": 22050,
+    "seconds": 0.5
+  },
+  "midi": {
+    "hz_to_midi_220": 57.0,
+    "midi_to_hz_57": 220.0,
+    "note_name_57": "A3"
+  },
+  "noise": {
+    "detect": {
+      "f0": null,
+      "note": null,
+      "stability": null,
+      "voiced_ratio": 0.0
+    },
+    "seed": 20260913
+  },
+  "python_module": "app.ytpmv.pitch",
+  "render": {
+    "perfect": {
+      "detect": {
+        "f0": 219.510164498,
+        "note": "A3",
+        "stability": 0.467353973,
+        "voiced_ratio": 1.0
+      },
+      "hold": 0.0,
+      "rate": 1.0,
+      "stats": {
+        "dc": -0.000606493,
+        "peak": 0.399999887,
+        "rms": 0.278421651,
+        "samples": 13230
+      }
+    },
+    "seconds": 0.3,
+    "tape": {
+      "detect": {
+        "f0": 219.999999993,
+        "note": "A3",
+        "stability": 0.395475227,
+        "voiced_ratio": 1.0
+      },
+      "hold": 0.0,
+      "rate": 0.999999959,
+      "stats": {
+        "dc": 7.8169e-05,
+        "peak": 0.399999887,
+        "rms": 0.279010023,
+        "samples": 13230
+      }
+    },
+    "target_hz": 220.0,
+    "target_midi": 57
+  },
+  "sample_rate": 44100,
+  "track": {
+    "frames": 89,
+    "max_f0_voiced": 220.000081104,
+    "median_f0_voiced": 220.000008988,
+    "min_f0_voiced": 219.999791728,
+    "voiced_frames": 89
+  }
+}

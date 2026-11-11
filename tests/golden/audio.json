@@ -1,0 +1,254 @@
+{
+  "entries": [
+    {
+      "dc": -0.000317463,
+      "duration": 0.72,
+      "input_peak": 0.7,
+      "name": "nes",
+      "note_seconds": 0.18,
+      "notes": [
+        48,
+        55,
+        60,
+        64
+      ],
+      "peak": 0.433999985,
+      "rms": 0.229382978,
+      "sample_rate": 44100,
+      "samples": 31752,
+      "sha256": "d8cac9af16a457a9333ff3ff2d090847032197afc09f5302dac2ff5276b62751",
+      "tone": "pulse",
+      "wav": "audio\\nes.wav"
+    },
+    {
+      "dc": -0.003575962,
+      "duration": 0.72,
+      "input_peak": 0.7,
+      "name": "gb",
+      "note_seconds": 0.18,
+      "notes": [
+        48,
+        55,
+        60,
+        64
+      ],
+      "peak": 0.463075638,
+      "rms": 0.186875258,
+      "sample_rate": 44100,
+      "samples": 31752,
+      "sha256": "67cae0289461ee8d48950e1bbc64fdd951847f771e9ab096449c40f63ddac28b",
+      "tone": "gb-pulse",
+      "wav": "audio\\gb.wav"
+    },
+    {
+      "dc": -1e-09,
+      "duration": 1.92,
+      "input_peak": 0.7,
+      "model": "6581",
+      "name": "sid",
+      "note_seconds": 0.18,
+      "notes": [
+        48,
+        55,
+        60,
+        64
+      ],
+      "peak": 0.543435216,
+      "rms": 0.187935706,
+      "sample_rate": 44100,
+      "samples": 84672,
+      "sha256": "cf3a9ff19f3438b531b1bca92fa902388d84744a25b1cb26fb3f69e9e9a6a600",
+      "tone": "sid-lead",
+      "wav": "audio\\sid.wav"
+    },
+    {
+      "dc": -2.3075e-05,
+      "duration": 1.72,
+      "input_peak": 0.7,
+      "name": "opl2",
+      "note_seconds": 0.18,
+      "notes": [
+        48,
+        55,
+        60,
+        64
+      ],
+      "opl3": false,
+      "peak": 0.302704543,
+      "program": 0,
+      "rms": 0.128606283,
+      "sample_rate": 44100,
+      "samples": 75852,
+      "sha256": "72880a109bb2aa6a47cb9de9c97732c0c3ebb7c50e0af463b77468e6fef55a4c",
+      "tone": "opl2",
+      "wav": "audio\\opl2.wav"
+    },
+    {
+      "dc": 2.597e-06,
+      "duration": 1.72,
+      "input_peak": 0.7,
+      "name": "opl3",
+      "note_seconds": 0.18,
+      "notes": [
+        48,
+        55,
+        60,
+        64
+      ],
+      "opl3": true,
+      "peak": 0.276821971,
+      "program": 0,
+      "rms": 0.093879715,
+      "sample_rate": 44100,
+      "samples": 75852,
+      "sha256": "52d2f38e73a0b9a41c87ceebfdbcd57a4a140f89d3392e0f1c0c9ce91281d052",
+      "tone": "opl3",
+      "wav": "audio\\opl3.wav"
+    },
+    {
+      "dc": 4.7986e-05,
+      "duration": 1.44,
+      "input_peak": 0.7,
+      "name": "ym2612",
+      "note_seconds": 0.18,
+      "notes": [
+        48,
+        55,
+        60,
+        64
+      ],
+      "patch": "lead",
+      "peak": 0.439358503,
+      "rms": 0.190331062,
+      "sample_rate": 44100,
+      "samples": 63504,
+      "sha256": "57763cfb3c5bf4368b2800680da330fa8ee129982ee44e72a856cb06c9597706",
+      "tone": "lead",
+      "wav": "audio\\ym2612.wav"
+    },
+    {
+      "dc": 0.002669402,
+      "duration": 0.72,
+      "input_peak": 0.7,
+      "name": "sms",
+      "note_seconds": 0.18,
+      "notes": [
+        48,
+        55,
+        60,
+        64
+      ],
+      "peak": 0.433999985,
+      "rms": 0.378663882,
+      "sample_rate": 44100,
+      "samples": 31752,
+      "sha256": "886bffe2659e5e377de53e94c7de290c654731580e761635dbfd14ddef67fd9d",
+      "tone": "psg",
+      "wav": "audio\\sms.wav"
+    },
+    {
+      "captured_seconds": 1.0,
+      "dc": -0.000293531,
+      "duration": 1.0,
+      "input_peak": 0.7,
+      "name": "snes",
+      "note_seconds": 0.05,
+      "notes": [
+        48,
+        60
+      ],
+      "peak": 0.576910555,
+      "program": 0,
+      "rms": 0.076233124,
+      "sample_rate": 44100,
+      "samples": 44100,
+      "sha256": "361c761639cce647973e278531c512eafcf2916022fa1451e77a78171d8f98a7",
+      "tone": "snes",
+      "truncate_seconds": 1.0,
+      "wav": "audio\\snes.wav"
+    },
+    {
+      "dc": -0.001870597,
+      "duration": 1.4,
+      "input_peak": 0.7,
+      "name": "drums",
+      "note_seconds": null,
+      "notes": [
+        36,
+        38,
+        42,
+        36,
+        49,
+        38
+      ],
+      "pattern": [
+        {
+          "key": 36,
+          "seconds": 0.15,
+          "tone": "md-kick"
+        },
+        {
+          "key": 38,
+          "seconds": 0.12,
+          "tone": "nes-snare"
+        },
+        {
+          "key": 42,
+          "seconds": 0.08,
+          "tone": "sms-hat"
+        },
+        {
+          "key": 36,
+          "seconds": 0.12,
+          "tone": "gb-kick"
+        },
+        {
+          "key": 49,
+          "seconds": 0.15,
+          "tone": "sid-cymbal"
+        },
+        {
+          "key": 38,
+          "seconds": 0.12,
+          "tone": "md-snare"
+        }
+      ],
+      "peak": 0.722318411,
+      "rms": 0.1064971,
+      "sample_rate": 44100,
+      "samples": 61740,
+      "sha256": "2b3dc21fd75779b08df877d3af59bfe24476adefb5072a4bd0b1e23201b16d54",
+      "tone": "pattern",
+      "wav": "audio\\drums.wav"
+    },
+    {
+      "ceiling": 0.89,
+      "channels": 2,
+      "dc": 0.001341859,
+      "duration": 0.5,
+      "frames": 22050,
+      "loudness_lufs": -14.0,
+      "name": "master",
+      "peak": 0.71802998,
+      "peak_before": 0.99,
+      "rms": 0.157448194,
+      "rms_before": 0.217085242,
+      "sample_rate": 44100,
+      "samples": 44100,
+      "sha256": "5406b3287db1eacdd8a11e1dc1a0587d405552d6b34182333412ec8dd790614e",
+      "target_lufs": -14.0,
+      "tone": "master.finish",
+      "wav": "audio\\master.wav"
+    }
+  ],
+  "input_peak": 0.7,
+  "note_seconds": 0.18,
+  "note_sequence": [
+    48,
+    55,
+    60,
+    64
+  ],
+  "python_module": "app.ytpmv.tone.apply / master.finish",
+  "sample_rate": 44100
+}

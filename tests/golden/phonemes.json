@@ -1,0 +1,1131 @@
+{
+  "dictionary": "nltk cmudict (bundled), American pronunciations",
+  "nonsense": [
+    {
+      "guess": [
+        "B",
+        "L",
+        "AO",
+        "R",
+        "P",
+        "T",
+        "AE",
+        "S",
+        "T",
+        "IH",
+        "K"
+      ],
+      "word": "blorptastic"
+    },
+    {
+      "guess": [
+        "Z",
+        "IH",
+        "B",
+        "B",
+        "L",
+        "EH"
+      ],
+      "word": "zibble"
+    },
+    {
+      "guess": [
+        "F",
+        "R",
+        "OW",
+        "B",
+        "N",
+        "IH",
+        "F",
+        "IY"
+      ],
+      "word": "frobnify"
+    },
+    {
+      "guess": [
+        "K",
+        "W",
+        "AH",
+        "K",
+        "S",
+        "L",
+        "IY"
+      ],
+      "word": "quuxly"
+    },
+    {
+      "guess": [
+        "S",
+        "N",
+        "AE",
+        "Z",
+        "Z",
+        "L",
+        "EH"
+      ],
+      "word": "snazzle"
+    }
+  ],
+  "python_module": "app.phonemes",
+  "words": [
+    {
+      "phonemes": [
+        "HH",
+        "AH",
+        "L",
+        "OW"
+      ],
+      "phones_of": [
+        "HH",
+        "AH",
+        "L",
+        "OW"
+      ],
+      "word": "hello"
+    },
+    {
+      "phonemes": [
+        "W",
+        "ER",
+        "L",
+        "D"
+      ],
+      "phones_of": [
+        "W",
+        "ER",
+        "L",
+        "D"
+      ],
+      "word": "world"
+    },
+    {
+      "phonemes": [
+        "M",
+        "AY",
+        "K",
+        "AH",
+        "L"
+      ],
+      "phones_of": [
+        "M",
+        "AY",
+        "K",
+        "AH",
+        "L"
+      ],
+      "word": "michael"
+    },
+    {
+      "phonemes": [
+        "R",
+        "OW",
+        "Z",
+        "AH",
+        "N"
+      ],
+      "phones_of": [
+        "R",
+        "OW",
+        "Z",
+        "AH",
+        "N"
+      ],
+      "word": "rosen"
+    },
+    {
+      "phonemes": [
+        "M",
+        "AH",
+        "SH",
+        "IY",
+        "N"
+      ],
+      "phones_of": [
+        "M",
+        "AH",
+        "SH",
+        "IY",
+        "N"
+      ],
+      "word": "machine"
+    },
+    {
+      "phonemes": [
+        "R",
+        "AH",
+        "S",
+        "T"
+      ],
+      "phones_of": [
+        "R",
+        "AH",
+        "S",
+        "T"
+      ],
+      "word": "rust"
+    },
+    {
+      "phonemes": [
+        "P",
+        "AO",
+        "R",
+        "T"
+      ],
+      "phones_of": [
+        "P",
+        "AO",
+        "R",
+        "T"
+      ],
+      "word": "port"
+    },
+    {
+      "phonemes": [
+        "G",
+        "OW",
+        "L",
+        "D",
+        "AH",
+        "N"
+      ],
+      "phones_of": [
+        "G",
+        "OW",
+        "L",
+        "D",
+        "AH",
+        "N"
+      ],
+      "word": "golden"
+    },
+    {
+      "phonemes": [
+        "P",
+        "EH",
+        "R",
+        "AH",
+        "T",
+        "IY"
+      ],
+      "phones_of": [
+        "P",
+        "EH",
+        "R",
+        "AH",
+        "T",
+        "IY"
+      ],
+      "word": "parity"
+    },
+    {
+      "phonemes": [
+        "F",
+        "IH",
+        "K",
+        "S",
+        "CH",
+        "ER"
+      ],
+      "phones_of": [
+        "F",
+        "IH",
+        "K",
+        "S",
+        "CH",
+        "ER"
+      ],
+      "word": "fixture"
+    },
+    {
+      "phonemes": [
+        "DH",
+        "AH"
+      ],
+      "phones_of": [
+        "DH",
+        "AH"
+      ],
+      "word": "the"
+    },
+    {
+      "phonemes": [
+        "AH"
+      ],
+      "phones_of": [
+        "AH"
+      ],
+      "word": "a"
+    },
+    {
+      "phonemes": [
+        "AH",
+        "N",
+        "D"
+      ],
+      "phones_of": [
+        "AH",
+        "N",
+        "D"
+      ],
+      "word": "and"
+    },
+    {
+      "phonemes": [
+        "B",
+        "IH",
+        "K",
+        "AO",
+        "Z"
+      ],
+      "phones_of": [
+        "B",
+        "IH",
+        "K",
+        "AO",
+        "Z"
+      ],
+      "word": "because"
+    },
+    {
+      "phonemes": [
+        "TH",
+        "R",
+        "UW"
+      ],
+      "phones_of": [
+        "TH",
+        "R",
+        "UW"
+      ],
+      "word": "through"
+    },
+    {
+      "phonemes": [
+        "TH",
+        "AO",
+        "T"
+      ],
+      "phones_of": [
+        "TH",
+        "AO",
+        "T"
+      ],
+      "word": "thought"
+    },
+    {
+      "phonemes": [
+        "TH",
+        "ER",
+        "D",
+        "IY"
+      ],
+      "phones_of": [
+        "TH",
+        "ER",
+        "D",
+        "IY"
+      ],
+      "word": "thirty"
+    },
+    {
+      "phonemes": [
+        "HH",
+        "AH",
+        "N",
+        "D",
+        "R",
+        "AH",
+        "D"
+      ],
+      "phones_of": [
+        "HH",
+        "AH",
+        "N",
+        "D",
+        "R",
+        "AH",
+        "D"
+      ],
+      "word": "hundred"
+    },
+    {
+      "phonemes": [
+        "TH",
+        "AW",
+        "Z",
+        "AH",
+        "N",
+        "D"
+      ],
+      "phones_of": [
+        "TH",
+        "AW",
+        "Z",
+        "AH",
+        "N",
+        "D"
+      ],
+      "word": "thousand"
+    },
+    {
+      "phonemes": [
+        "K",
+        "AH",
+        "L",
+        "AA",
+        "M",
+        "AH",
+        "T",
+        "ER",
+        "Z"
+      ],
+      "phones_of": [
+        "K",
+        "AH",
+        "L",
+        "AA",
+        "M",
+        "AH",
+        "T",
+        "ER",
+        "Z"
+      ],
+      "word": "kilometres"
+    },
+    {
+      "phonemes": [
+        "K",
+        "IH",
+        "L",
+        "AH",
+        "G",
+        "R",
+        "AE",
+        "M",
+        "Z"
+      ],
+      "phones_of": [
+        "K",
+        "IH",
+        "L",
+        "AH",
+        "G",
+        "R",
+        "AE",
+        "M",
+        "Z"
+      ],
+      "word": "kilograms"
+    },
+    {
+      "phonemes": [
+        "M",
+        "IH",
+        "L",
+        "AH",
+        "M",
+        "IY",
+        "T",
+        "ER",
+        "Z"
+      ],
+      "phones_of": [
+        "M",
+        "IH",
+        "L",
+        "AH",
+        "M",
+        "IY",
+        "T",
+        "ER",
+        "Z"
+      ],
+      "word": "millimetres"
+    },
+    {
+      "phonemes": [
+        "L",
+        "IY",
+        "T",
+        "ER",
+        "Z"
+      ],
+      "phones_of": [
+        "L",
+        "IY",
+        "T",
+        "ER",
+        "Z"
+      ],
+      "word": "litres"
+    },
+    {
+      "phonemes": [
+        "D",
+        "AA",
+        "L",
+        "ER",
+        "Z"
+      ],
+      "phones_of": [
+        "D",
+        "AA",
+        "L",
+        "ER",
+        "Z"
+      ],
+      "word": "dollars"
+    },
+    {
+      "phonemes": [
+        "P",
+        "ER",
+        "S",
+        "EH",
+        "N",
+        "T"
+      ],
+      "phones_of": [
+        "P",
+        "ER",
+        "S",
+        "EH",
+        "N",
+        "T"
+      ],
+      "word": "percent"
+    },
+    {
+      "phonemes": [
+        "EH",
+        "N",
+        "JH",
+        "AH",
+        "N"
+      ],
+      "phones_of": [
+        "EH",
+        "N",
+        "JH",
+        "AH",
+        "N"
+      ],
+      "word": "engine"
+    },
+    {
+      "phonemes": [
+        "S",
+        "IH",
+        "L",
+        "AH",
+        "N",
+        "D",
+        "ER"
+      ],
+      "phones_of": [
+        "S",
+        "IH",
+        "L",
+        "AH",
+        "N",
+        "D",
+        "ER"
+      ],
+      "word": "cylinder"
+    },
+    {
+      "phonemes": [
+        "T",
+        "ER",
+        "B",
+        "OW"
+      ],
+      "phones_of": [
+        "T",
+        "ER",
+        "B",
+        "OW"
+      ],
+      "word": "turbo"
+    },
+    {
+      "phonemes": [
+        "CH",
+        "AA",
+        "R",
+        "JH",
+        "D"
+      ],
+      "phones_of": [
+        "CH",
+        "AA",
+        "R",
+        "JH",
+        "D"
+      ],
+      "word": "charged"
+    },
+    {
+      "phonemes": [
+        "B",
+        "ER",
+        "TH",
+        "D",
+        "EY"
+      ],
+      "phones_of": [
+        "B",
+        "ER",
+        "TH",
+        "D",
+        "EY"
+      ],
+      "word": "birthday"
+    },
+    {
+      "phonemes": [
+        "D",
+        "IH",
+        "F",
+        "ER",
+        "AH",
+        "N",
+        "T"
+      ],
+      "phones_of": [
+        "D",
+        "IH",
+        "F",
+        "ER",
+        "AH",
+        "N",
+        "T"
+      ],
+      "word": "different"
+    },
+    {
+      "phonemes": [
+        "P",
+        "IY",
+        "P",
+        "AH",
+        "L"
+      ],
+      "phones_of": [
+        "P",
+        "IY",
+        "P",
+        "AH",
+        "L"
+      ],
+      "word": "people"
+    },
+    {
+      "phonemes": [
+        "N",
+        "AH",
+        "M",
+        "B",
+        "ER",
+        "Z"
+      ],
+      "phones_of": [
+        "N",
+        "AH",
+        "M",
+        "B",
+        "ER",
+        "Z"
+      ],
+      "word": "numbers"
+    },
+    {
+      "phonemes": [
+        "M",
+        "EH",
+        "ZH",
+        "ER"
+      ],
+      "phones_of": [
+        "M",
+        "EH",
+        "SH",
+        "ER"
+      ],
+      "word": "measure"
+    },
+    {
+      "phonemes": [
+        "S",
+        "EH",
+        "N",
+        "T",
+        "AH",
+        "N",
+        "S"
+      ],
+      "phones_of": [
+        "S",
+        "EH",
+        "N",
+        "T",
+        "AH",
+        "N",
+        "S"
+      ],
+      "word": "sentence"
+    },
+    {
+      "phonemes": [
+        "P",
+        "R",
+        "OW",
+        "N",
+        "AH",
+        "N",
+        "S",
+        "IY",
+        "EY",
+        "SH",
+        "AH",
+        "N"
+      ],
+      "phones_of": [
+        "P",
+        "R",
+        "OW",
+        "N",
+        "AH",
+        "N",
+        "S",
+        "IY",
+        "EY",
+        "SH",
+        "AH",
+        "N"
+      ],
+      "word": "pronunciation"
+    },
+    {
+      "phonemes": [
+        "D",
+        "IH",
+        "K",
+        "SH",
+        "AH",
+        "N",
+        "EH",
+        "R",
+        "IY"
+      ],
+      "phones_of": [
+        "D",
+        "IH",
+        "K",
+        "SH",
+        "AH",
+        "N",
+        "EH",
+        "R",
+        "IY"
+      ],
+      "word": "dictionary"
+    },
+    {
+      "phonemes": [
+        "S",
+        "IH",
+        "N",
+        "TH",
+        "EH",
+        "T",
+        "IH",
+        "K"
+      ],
+      "phones_of": [
+        "S",
+        "IH",
+        "N",
+        "TH",
+        "EH",
+        "T",
+        "IH",
+        "K"
+      ],
+      "word": "synthetic"
+    },
+    {
+      "phonemes": [
+        "K",
+        "AO",
+        "R",
+        "P",
+        "AH",
+        "S"
+      ],
+      "phones_of": [
+        "K",
+        "AO",
+        "R",
+        "P",
+        "AH",
+        "S"
+      ],
+      "word": "corpus"
+    },
+    {
+      "phonemes": [
+        "S",
+        "P",
+        "L",
+        "AY",
+        "S"
+      ],
+      "phones_of": [
+        "S",
+        "P",
+        "L",
+        "AY",
+        "S"
+      ],
+      "word": "splice"
+    },
+    {
+      "phonemes": [
+        "F",
+        "OW",
+        "N",
+        "IY",
+        "M"
+      ],
+      "phones_of": [
+        "F",
+        "OW",
+        "N",
+        "IY",
+        "M"
+      ],
+      "word": "phoneme"
+    },
+    {
+      "phonemes": [
+        "V",
+        "OY",
+        "S"
+      ],
+      "phones_of": [
+        "V",
+        "OY",
+        "S"
+      ],
+      "word": "voice"
+    },
+    {
+      "phonemes": [
+        "S",
+        "AE",
+        "M",
+        "P",
+        "AH",
+        "L"
+      ],
+      "phones_of": [
+        "S",
+        "AE",
+        "M",
+        "P",
+        "AH",
+        "L"
+      ],
+      "word": "sample"
+    },
+    {
+      "phonemes": [
+        "P",
+        "IH",
+        "CH"
+      ],
+      "phones_of": [
+        "P",
+        "IH",
+        "CH"
+      ],
+      "word": "pitch"
+    },
+    {
+      "phonemes": [
+        "AA",
+        "D",
+        "IY",
+        "OW"
+      ],
+      "phones_of": [
+        "AA",
+        "D",
+        "IY",
+        "OW"
+      ],
+      "word": "audio"
+    },
+    {
+      "phonemes": [
+        "R",
+        "IH",
+        "DH",
+        "AH",
+        "M"
+      ],
+      "phones_of": [
+        "R",
+        "IH",
+        "DH",
+        "AH",
+        "M"
+      ],
+      "word": "rhythm"
+    },
+    {
+      "phonemes": [
+        "K",
+        "IH",
+        "T",
+        "AH",
+        "N"
+      ],
+      "phones_of": [
+        "K",
+        "IH",
+        "T",
+        "AH",
+        "N"
+      ],
+      "word": "kitten"
+    },
+    {
+      "phonemes": [
+        "S",
+        "K",
+        "W",
+        "ER",
+        "AH",
+        "L"
+      ],
+      "phones_of": [
+        "S",
+        "K",
+        "W",
+        "ER",
+        "AH",
+        "L"
+      ],
+      "word": "squirrel"
+    },
+    {
+      "phonemes": [
+        "S",
+        "T",
+        "R",
+        "EH",
+        "NG",
+        "K",
+        "TH"
+      ],
+      "phones_of": [
+        "S",
+        "T",
+        "R",
+        "EH",
+        "NG",
+        "K",
+        "TH"
+      ],
+      "word": "strength"
+    },
+    {
+      "phonemes": [
+        "T",
+        "W",
+        "EH",
+        "L",
+        "F",
+        "TH",
+        "S"
+      ],
+      "phones_of": [
+        "T",
+        "W",
+        "EH",
+        "L",
+        "F",
+        "TH",
+        "S"
+      ],
+      "word": "twelfths"
+    },
+    {
+      "phonemes": [
+        "AE",
+        "K",
+        "N",
+        "AA",
+        "L",
+        "IH",
+        "JH"
+      ],
+      "phones_of": [
+        "AE",
+        "K",
+        "N",
+        "AA",
+        "L",
+        "IH",
+        "JH"
+      ],
+      "word": "acknowledge"
+    },
+    {
+      "phonemes": [
+        "W",
+        "UH",
+        "S",
+        "T",
+        "AH",
+        "SH",
+        "ER"
+      ],
+      "phones_of": [
+        "W",
+        "UH",
+        "S",
+        "T",
+        "AH",
+        "SH",
+        "ER"
+      ],
+      "word": "worcestershire"
+    },
+    {
+      "phonemes": [
+        "K",
+        "IY"
+      ],
+      "phones_of": [
+        "K",
+        "IY"
+      ],
+      "word": "quay"
+    },
+    {
+      "phonemes": [
+        "Z",
+        "IY",
+        "B",
+        "R",
+        "AH"
+      ],
+      "phones_of": [
+        "Z",
+        "IY",
+        "B",
+        "R",
+        "AH"
+      ],
+      "word": "zebra"
+    },
+    {
+      "phonemes": [
+        "T",
+        "AH",
+        "M",
+        "EY",
+        "T",
+        "OW"
+      ],
+      "phones_of": [
+        "T",
+        "AH",
+        "M",
+        "EY",
+        "T",
+        "OW"
+      ],
+      "word": "tomato"
+    },
+    {
+      "phonemes": [
+        "S",
+        "K",
+        "EH",
+        "JH",
+        "UH",
+        "L"
+      ],
+      "phones_of": [
+        "S",
+        "K",
+        "EH",
+        "JH",
+        "UH",
+        "L"
+      ],
+      "word": "schedule"
+    },
+    {
+      "phonemes": [
+        "AH",
+        "L",
+        "UW",
+        "M",
+        "IH",
+        "N",
+        "AH",
+        "M"
+      ],
+      "phones_of": [
+        "AH",
+        "L",
+        "UW",
+        "M",
+        "IH",
+        "N",
+        "AH",
+        "M"
+      ],
+      "word": "aluminium"
+    },
+    {
+      "phonemes": [
+        "K",
+        "AH",
+        "L",
+        "ER"
+      ],
+      "phones_of": [
+        "K",
+        "AH",
+        "L",
+        "ER"
+      ],
+      "word": "colour"
+    },
+    {
+      "phonemes": [
+        "F",
+        "EY",
+        "V",
+        "ER",
+        "IH",
+        "T"
+      ],
+      "phones_of": [
+        "F",
+        "EY",
+        "V",
+        "ER",
+        "IH",
+        "T"
+      ],
+      "word": "favourite"
+    }
+  ]
+}
