@@ -1,0 +1,252 @@
+//! The API route table. Every route is registered through [`ApiBuilder`],
+//! which forces an [`Access`] declaration and wraps the handler in the auth
+//! guard, so a route without a permission check cannot be written.
+
+use axum::extract::{DefaultBodyLimit, Request, State};
+use axum::handler::Handler;
+use axum::http::Method;
+use axum::middleware::{from_fn_with_state, Next};
+use axum::routing::{on, MethodFilter, MethodRouter};
+use axum::Router;
+use ytp_auth::Permission::{self, *};
+
+use crate::handlers::{admin, auth, corpora, misc, tokens};
+use crate::{ws, AppState};
+
+/// Who may call a route.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Access {
+    /// Anyone; the caller is not even looked up.
+    Public,
+    /// Anyone; the caller is resolved if credentials are present.
+    Optional,
+    /// Anyone holding the one-time first-run setup token (checked in handler).
+    SetupToken,
+    /// A cookie session (not an API token).
+    Session,
+    /// Any authenticated caller.
+    Authenticated,
+    Perm(Permission),
+    /// `read` for GET/HEAD, `write` for everything else.
+    ReadWrite {
+        read: Permission,
+        write: Permission,
+    },
+}
+
+#[derive(Debug, Clone)]
+pub struct RouteSpec {
+    /// `None` = any method.
+    pub method: Option<Method>,
+    pub path: &'static str,
+    pub access: Access,
+}
+
+pub struct ApiBuilder<'a> {
+    state: &'a AppState,
+    router: Router<AppState>,
+    specs: Vec<RouteSpec>,
+}
+
+impl<'a> ApiBuilder<'a> {
+    pub fn new(state: &'a AppState) -> Self {
+        Self {
+            state,
+            router: Router::new(),
+            specs: Vec::new(),
+        }
+    }
+
+    fn add<H, T>(
+        mut self,
+        method: Option<Method>,
+        path: &'static str,
+        access: Access,
+        handler: H,
+        body_limit: Option<usize>,
+    ) -> Self
+    where
+        H: Handler<T, AppState>,
+        T: 'static,
+    {
+        let mr: MethodRouter<AppState> = match &method {
+            Some(m) => on(
+                MethodFilter::try_from(m.clone()).expect("supported method"),
+                handler,
+            ),
+            // Not `any()`: that registers a fallback, which route_layer skips.
+            None => on(
+                MethodFilter::GET
+                    .or(MethodFilter::HEAD)
+                    .or(MethodFilter::POST)
+                    .or(MethodFilter::PUT)
+                    .or(MethodFilter::PATCH)
+                    .or(MethodFilter::DELETE)
+                    .or(MethodFilter::OPTIONS),
+                handler,
+            ),
+        };
+        let mr = mr.route_layer(from_fn_with_state(
+            self.state.clone(),
+            move |State(st): State<AppState>, req: Request, next: Next| {
+                crate::auth::guard(st, access, req, next)
+            },
+        ));
+        let mr = match body_limit {
+            Some(n) => mr.layer(DefaultBodyLimit::max(n)),
+            None => mr,
+        };
+        self.router = self.router.route(path, mr);
+        self.specs.push(RouteSpec {
+            method,
+            path,
+            access,
+        });
+        self
+    }
+
+    pub fn get<H: Handler<T, AppState>, T: 'static>(
+        self,
+        p: &'static str,
+        a: Access,
+        h: H,
+    ) -> Self {
+        self.add(Some(Method::GET), p, a, h, None)
+    }
+
+    pub fn post<H: Handler<T, AppState>, T: 'static>(
+        self,
+        p: &'static str,
+        a: Access,
+        h: H,
+    ) -> Self {
+        self.add(Some(Method::POST), p, a, h, None)
+    }
+
+    pub fn patch<H: Handler<T, AppState>, T: 'static>(
+        self,
+        p: &'static str,
+        a: Access,
+        h: H,
+    ) -> Self {
+        self.add(Some(Method::PATCH), p, a, h, None)
+    }
+
+    pub fn delete<H: Handler<T, AppState>, T: 'static>(
+        self,
+        p: &'static str,
+        a: Access,
+        h: H,
+    ) -> Self {
+        self.add(Some(Method::DELETE), p, a, h, None)
+    }
+
+    pub fn any<H: Handler<T, AppState>, T: 'static>(
+        self,
+        p: &'static str,
+        a: Access,
+        h: H,
+    ) -> Self {
+        self.add(None, p, a, h, None)
+    }
+
+    pub fn post_large<H: Handler<T, AppState>, T: 'static>(
+        self,
+        p: &'static str,
+        a: Access,
+        h: H,
+        limit: usize,
+    ) -> Self {
+        self.add(Some(Method::POST), p, a, h, Some(limit))
+    }
+
+    pub fn finish(self) -> (Router<AppState>, Vec<RouteSpec>) {
+        (self.router, self.specs)
+    }
+}
+
+pub const MAX_BUNDLE_BYTES: usize = 8 << 30;
+
+/// Every `/api` route.
+pub fn api(state: &AppState) -> (Router<AppState>, Vec<RouteSpec>) {
+    use Access::*;
+    ApiBuilder::new(state)
+        .get("/api/health", Public, misc::health)
+        // auth
+        .get("/api/auth/state", Optional, auth::state)
+        .post("/api/auth/setup", SetupToken, auth::setup)
+        .post("/api/auth/login", Public, auth::login)
+        .post("/api/auth/logout", Session, auth::logout)
+        .post("/api/auth/password", Session, auth::change_password)
+        .get("/api/auth/permissions", Authenticated, auth::permissions)
+        // admin
+        .get("/api/admin/users", Perm(UsersManage), admin::list_users)
+        .post("/api/admin/users", Perm(UsersManage), admin::create_user)
+        .patch(
+            "/api/admin/users/{id}",
+            Perm(UsersManage),
+            admin::update_user,
+        )
+        .delete(
+            "/api/admin/users/{id}",
+            Perm(UsersManage),
+            admin::delete_user,
+        )
+        .get("/api/admin/roles", Perm(RolesManage), admin::list_roles)
+        .post("/api/admin/roles", Perm(RolesManage), admin::create_role)
+        .patch(
+            "/api/admin/roles/{name}",
+            Perm(RolesManage),
+            admin::update_role,
+        )
+        .delete(
+            "/api/admin/roles/{name}",
+            Perm(RolesManage),
+            admin::delete_role,
+        )
+        .get("/api/admin/audit", Perm(AuditView), admin::audit)
+        // tokens
+        .get("/api/tokens", Perm(TokensCreate), tokens::list)
+        .post("/api/tokens", Perm(TokensCreate), tokens::create)
+        .delete("/api/tokens/{id}", Perm(TokensCreate), tokens::delete)
+        // corpora
+        .get("/api/corpora", Perm(CorpusRead), corpora::list)
+        .post_large(
+            "/api/corpora/install",
+            Perm(CorpusInstall),
+            corpora::install,
+            MAX_BUNDLE_BYTES,
+        )
+        .delete("/api/corpora/{name}", Perm(CorpusDelete), corpora::delete)
+        // events
+        .get("/api/ws", Authenticated, ws::handler)
+        // later phases: authenticated and permission-checked, then 501
+        .post(
+            "/api/ytp/generate",
+            Perm(GenerateYtp),
+            misc::not_implemented,
+        )
+        .any(
+            "/api/ytpmv/{*rest}",
+            Perm(GenerateYtpmv),
+            misc::not_implemented,
+        )
+        .get("/api/jobs/{id}", Authenticated, misc::not_implemented)
+        .any(
+            "/api/projects",
+            ReadWrite {
+                read: ProjectRead,
+                write: ProjectWrite,
+            },
+            misc::not_implemented,
+        )
+        .any(
+            "/api/projects/{*rest}",
+            ReadWrite {
+                read: ProjectRead,
+                write: ProjectWrite,
+            },
+            misc::not_implemented,
+        )
+        .finish()
+}

@@ -1,0 +1,51 @@
+[workspace]
+resolver = "2"
+members = ["crates/ytp-core", "crates/ytp-auth", "crates/ytp-corpus", "crates/ytp-server"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+publish = false
+
+[workspace.dependencies]
+ytp-core = { path = "crates/ytp-core" }
+ytp-auth = { path = "crates/ytp-auth" }
+ytp-corpus = { path = "crates/ytp-corpus" }
+
+anyhow = "1"
+argon2 = "0.5"
+axum = { version = "0.8", features = ["ws", "multipart", "macros"] }
+base64 = "0.22"
+chrono = { version = "0.4", default-features = false, features = ["clock", "std", "serde"] }
+clap = { version = "4", features = ["derive", "env"] }
+futures-util = { version = "0.3", default-features = false, features = ["sink", "std"] }
+http-body-util = "0.1"
+mime_guess = "2"
+rand = "0.8"
+rust-embed = { version = "8", features = ["interpolate-folder-path", "mime-guess"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "sqlite", "migrate", "macros"] }
+subtle = "2"
+tar = { version = "0.4", default-features = false }
+tempfile = "3"
+thiserror = "2"
+tokio = { version = "1", features = ["full"] }
+tokio-tungstenite = "0.26"
+tower = { version = "0.5", features = ["util"] }
+tower-http = { version = "0.6", features = ["trace", "set-header"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+zstd = "0.13"
+
+# Argon2 is unbearably slow unoptimised; keep debug builds and tests snappy.
+[profile.dev.package.argon2]
+opt-level = 3
+[profile.dev.package.blake2]
+opt-level = 3
+[profile.dev.package.sha2]
+opt-level = 3
+[profile.dev.package.zstd-sys]
+opt-level = 3

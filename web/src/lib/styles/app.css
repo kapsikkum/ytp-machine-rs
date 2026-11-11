@@ -1,0 +1,42 @@
+/* Additions to theme.css (which stays verbatim): the same plain controls for
+   input types the old app never used, plus the few shared helpers. */
+
+:where(input[type=password], input[type=email], input[type=url]) {
+  background: var(--raised); border: 1px solid var(--line-2); border-radius: 8px;
+  padding: .38rem .6rem; font-size: .85rem; color: var(--text);
+  transition: border-color .15s;
+}
+:where(input[type=password], input[type=email], input[type=url]):hover { border-color: #4a4a52; }
+:where(input[type=password], input[type=email], input[type=url]):focus { outline: none; border-color: var(--yellow); }
+
+/* The editor/splice/admin pages' panel: same as .card with a lighter shadow. */
+.panel {
+  background: linear-gradient(180deg, #161618, var(--surface));
+  border: 1px solid var(--line); border-radius: var(--radius);
+  box-shadow: 0 10px 40px rgba(0,0,0,.3); padding: 1rem;
+}
+.panel h2 { font-size: .68rem; letter-spacing: 1.5px; text-transform: uppercase; color: var(--dim); font-weight: 500; margin-bottom: .75rem; }
+
+.ghost {
+  display: inline-flex; align-items: center; gap: .4rem; cursor: pointer;
+  background: transparent; border: 1px solid var(--line-2); border-radius: 999px;
+  padding: .38rem .8rem; font-size: .78rem; color: var(--muted);
+  transition: color .15s, border-color .15s, background .15s;
+}
+.ghost:hover { color: var(--text); border-color: #4a4a52; }
+
+.linkish { background: none; border: none; padding: 0; color: var(--dim); cursor: pointer; font-size: .72rem; text-decoration: underline dotted; }
+.linkish:hover { color: var(--yellow); }
+
+/* A plain data table, as splice.html draws them. */
+table.data { border-collapse: collapse; width: 100%; font-size: .78rem; }
+table.data td, table.data th { padding: .4rem .55rem; text-align: left; border-bottom: 1px solid var(--line); vertical-align: middle; }
+table.data th { color: var(--dim); font-weight: 500; font-size: .7rem; letter-spacing: .5px; }
+table.data tr:hover td { background: rgba(255, 255, 255, .02); }
+.tag {
+  display: inline-block; font-size: .68rem; border-radius: 999px; padding: .1rem .5rem;
+  background: var(--raised); color: var(--muted); border: 1px solid var(--line-2); margin: 0 .2rem .2rem 0;
+}
+.tag.good { color: var(--green); border-color: #1d4d39; }
+.tag.warn { color: var(--amber); border-color: #5a4210; }
+.tag.bad { color: var(--red); border-color: #5a1f1f; }
