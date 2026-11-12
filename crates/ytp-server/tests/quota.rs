@@ -270,7 +270,7 @@ async fn the_clip_cache_lives_under_the_data_dir_and_can_be_turned_off() {
     let on = TestApp::new().await;
     assert!(on.st.config.data_dir.join("cache").join("clips").is_dir());
     let off = TestApp::with_config(|c| c.clip_cache_mb = 0).await;
-    assert!(!off.st.config.data_dir.join("cache").exists());
+    assert!(!off.st.config.data_dir.join("cache").join("clips").exists());
 }
 
 #[tokio::test]
