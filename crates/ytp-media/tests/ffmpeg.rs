@@ -66,7 +66,7 @@ fn duration(path: &Path) -> f64 {
 
 fn render(r: &FfmpegRenderer, segs: &[Segment], opts: &GenerationOptions, captions: bool, out: &Path) {
     let audio = AudioCache::new(r.audio());
-    let job = RenderJob { segments: segs, options: opts, captions, out, audio: &audio };
+    let job = RenderJob { segments: segs, options: opts, captions, out, audio: &audio, max_height: 0, encoder: None, finish: true, cancel: None };
     r.render(&job, &|_, _, _| true).unwrap_or_else(|e| panic!("{e}"));
     let want = total_duration(segs, opts, &audio);
     let got = duration(out);
@@ -126,7 +126,7 @@ fn long_sentences_are_encoded_in_chunks_and_joined() {
     let audio = AudioCache::new(r.audio());
     let out = dir.path().join("c.mp4");
     let opts = GenerationOptions::default();
-    let job = RenderJob { segments: &segs, options: &opts, captions: false, out: &out, audio: &audio };
+    let job = RenderJob { segments: &segs, options: &opts, captions: false, out: &out, audio: &audio, max_height: 0, encoder: None, finish: true, cancel: None };
     r.render(&job, &|stage, done, total| {
         seen.lock().unwrap().push((stage.to_string(), done, total));
         true
@@ -155,7 +155,7 @@ fn cancelling_stops_the_encode_and_leaves_nothing() {
     let audio = AudioCache::new(r.audio());
     let out = dir.path().join("d.mp4");
     let opts = GenerationOptions::default();
-    let job = RenderJob { segments: &segs, options: &opts, captions: false, out: &out, audio: &audio };
+    let job = RenderJob { segments: &segs, options: &opts, captions: false, out: &out, audio: &audio, max_height: 0, encoder: None, finish: true, cancel: None };
     let res = r.render(&job, &|_, _, _| false);
     assert!(matches!(res, Err(ytp_media::RenderError::Cancelled)));
     assert!(!out.exists());

@@ -48,6 +48,25 @@ pub struct RenderJob<'a> {
     pub out: &'a Path,
     /// Memoised audio measurements shared with the planning that made `segments`.
     pub audio: &'a AudioCache<'a>,
+    /// Output height ceiling from the caller's role quota (0 = no limit).
+    pub max_height: u32,
+    /// Presets to finish the master with; `None` uses the built-in ones.
+    pub encoder: Option<&'a ytp_encode::Encoder>,
+    /// Finish the master into `out` through the shared encoder. Intermediate
+    /// renders (cached sample clips) set this and take the master as they are.
+    pub finish: bool,
+    /// Asked while the final encode runs; `None` falls back to `progress`.
+    pub cancel: Option<&'a dyn Fn() -> bool>,
+}
+
+/// `out` is `<id>.mp4`; the master kept beside it is `<id>.master.mp4`, so a
+/// finished job can be re-encoded later without rendering again.
+pub fn master_path(out: &Path) -> PathBuf {
+    let stem = out
+        .file_stem()
+        .map(|s| s.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "output".into());
+    out.with_file_name(format!("{stem}.master.mp4"))
 }
 
 /// `progress(stage, done, total)`; return `false` to cancel.
@@ -199,6 +218,7 @@ impl FfmpegRenderer {
                 Err(RenderError::Cancelled)
             }
         };
+        let master = master_path(job.out);
         let mut chunks: Vec<&[Segment]> = Vec::new();
         let (mut begin, mut used) = (0usize, 0usize);
         for (k, seg) in job.segments.iter().enumerate() {
@@ -214,14 +234,15 @@ impl FfmpegRenderer {
 
         if chunks.len() == 1 {
             say("encoding", 0, 1)?;
-            self.encode_chunk(job, chunks[0], job.out, true, progress, ("encoding", 0, 1))?;
-            return say("encoding", 1, 1);
+            self.encode_chunk(job, chunks[0], &master, true, progress, ("encoding", 0, 1))?;
+            say("encoding", 1, 1)?;
+            return self.finish_output(job, &master, progress);
         }
 
         let parts: Vec<PathBuf> = (0..chunks.len())
-            .map(|ci| PathBuf::from(format!("{}.part{ci}.mp4", job.out.display())))
+            .map(|ci| PathBuf::from(format!("{}.part{ci}.mp4", master.display())))
             .collect();
-        let list = PathBuf::from(format!("{}.concat.txt", job.out.display()));
+        let list = PathBuf::from(format!("{}.concat.txt", master.display()));
         let result = (|| -> Result<(), RenderError> {
             for (ci, chunk) in chunks.iter().enumerate() {
                 say("encoding", ci, chunks.len())?;
@@ -259,16 +280,82 @@ impl FfmpegRenderer {
             );
             a.push(FPS.to_string());
             a.extend(["-c:a", "copy", "-movflags", "+faststart"].map(String::from));
-            a.push(job.out.display().to_string());
+            a.push(master.display().to_string());
             self.run_ffmpeg(&a, progress, ("joining", chunks.len(), chunks.len()))
         })();
         for p in parts.iter().chain(std::iter::once(&list)) {
             let _ = std::fs::remove_file(p);
         }
-        if result.is_err() {
-            let _ = std::fs::remove_file(job.out);
+        match result {
+            Ok(()) => self.finish_output(job, &master, progress),
+            Err(e) => {
+                let _ = std::fs::remove_file(&master);
+                Err(e)
+            }
         }
-        result
+    }
+
+    /// Turn the intermediate master into the result with `web-default`,
+    /// applying the caller's height ceiling.
+    fn finish_output(
+        &self,
+        job: &RenderJob,
+        master: &Path,
+        progress: ProgressFn,
+    ) -> Result<(), RenderError> {
+        if !job.finish {
+            // An intermediate (a cached sample clip): the master is the file.
+            if master != job.out {
+                let _ = std::fs::remove_file(job.out);
+                std::fs::rename(master, job.out)
+                    .map_err(|e| RenderError::Failed(format!("cannot move the render into place: {e}")))?;
+            }
+            return Ok(());
+        }
+        let own;
+        let encoder = match job.encoder {
+            Some(e) => e,
+            None => {
+                own = ytp_encode::Encoder::new(&self.tools.ffmpeg);
+                &own
+            }
+        };
+        let Some(preset) = encoder.presets().get("web-default") else {
+            return Err(RenderError::Failed(
+                "the web-default preset is missing".into(),
+            ));
+        };
+        let last = std::sync::atomic::AtomicUsize::new(0);
+        let report = |f: f32| {
+            let done = (f.clamp(0.0, 1.0) * 100.0) as usize;
+            last.store(done, Ordering::Relaxed);
+            progress("finishing", done, 100);
+        };
+        // The job manager's cancel flag when there is one; otherwise a
+        // progress callback that says false stops us.
+        let cancel = || {
+            job.cancel.map(|c| c()).unwrap_or(false)
+                || !progress("finishing", last.load(Ordering::Relaxed), 100)
+        };
+        let overrides = ytp_encode::Overrides {
+            max_width: 0,
+            max_height: job.max_height,
+        };
+        match encoder.encode(master, preset, overrides, job.out, &report, &cancel) {
+            Ok(_) => {
+                let _ = progress("finishing", 100, 100);
+                Ok(())
+            }
+            Err(ytp_encode::EncodeError::Cancelled) => {
+                let _ = std::fs::remove_file(master);
+                Err(RenderError::Cancelled)
+            }
+            Err(e) => {
+                let _ = std::fs::remove_file(master);
+                let _ = std::fs::remove_file(job.out);
+                Err(RenderError::Failed(e.to_string()))
+            }
+        }
     }
 }
 

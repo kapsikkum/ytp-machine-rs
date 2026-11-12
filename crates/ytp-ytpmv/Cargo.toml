@@ -11,6 +11,7 @@ ytp-music = { path = "../ytp-music" }
 ytp-splice = { path = "../ytp-splice" }
 ytp-corpus = { path = "../ytp-corpus" }
 ytp-media = { path = "../ytp-media" }
+ytp-encode = { path = "../ytp-encode" }
 serde_json = { workspace = true }
 sha2 = { workspace = true }
 tracing = { workspace = true }

@@ -367,6 +367,7 @@ fn render(
         ytp_ytpmv::Error::Cancelled => cancelled(),
         other => failed(other.to_string()),
     };
+    let out_size = ytp_ytpmv::fit_out_size(quota.max_height);
     let req = Request {
         song,
         parts,
@@ -379,6 +380,7 @@ fn render(
         audio_only: false,
         start_seconds: 0.0,
         only_part: None,
+        out_size,
     };
     let prep = match mix::prepare(&req, progress) {
         Ok(p) => p,
@@ -393,7 +395,7 @@ fn render(
         Err(e) => return fail(e),
     };
     let font = ytp_media::tools::Tools::new(&svc.ffmpeg).caption_font();
-    if let Err(e) = video::render_video(&prep, &mixed, &env, font.as_deref(), out, progress) {
+    if let Err(e) = video::render_video(&prep, &mixed, &env, font.as_deref(), Some(st.encoder.as_ref()), out, progress) {
         return fail(e);
     }
     let mut warnings = Vec::new();
@@ -410,6 +412,7 @@ fn render(
             timeline: json!([]),
             duration: (duration * 1000.0).round() / 1000.0,
             size_bytes: std::fs::metadata(out).map(|m| m.len()).unwrap_or(0),
+            file: None,
         }),
         report: Some(report),
         options: None,

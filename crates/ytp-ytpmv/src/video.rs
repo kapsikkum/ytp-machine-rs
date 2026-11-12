@@ -17,7 +17,7 @@ use std::time::Duration;
 use crate::decode::Frames;
 use crate::mix::{threads, Hit, Mixed, Prepared, Tile};
 use crate::samples::Env;
-use crate::{msg, say, scope, screen, Error, Progress, Result, FPS, OUT_H, OUT_W};
+use crate::{msg, say, scope, screen, Error, Progress, Result, FPS};
 
 /// What a tile shows at `t`: `(take, frame, flipped, brightness)`.
 ///
@@ -105,14 +105,15 @@ fn escape_label(text: &str) -> String {
 /// The ffmpeg filter chain for the finished picture.
 fn filter_chain(prep: &Prepared, font: Option<&str>) -> String {
     let (cw, ch) = prep.canvas;
+    let (out_w, out_h) = prep.out_size;
     let retro = prep.opts.screen() != "none";
     let mut vf: Vec<String> = Vec::new();
     // Blown back up first, so the labels are still placed in the full-size
     // picture and stay readable rather than becoming eight chunky squares.
     if retro {
-        vf.push(format!("scale={OUT_W}:{OUT_H}:flags=neighbor"));
-    } else if (cw, ch) != (OUT_W, OUT_H) {
-        vf.push(format!("scale={OUT_W}:{OUT_H}:flags=bilinear"));
+        vf.push(format!("scale={out_w}:{out_h}:flags=neighbor"));
+    } else if (cw, ch) != (out_w, out_h) {
+        vf.push(format!("scale={out_w}:{out_h}:flags=bilinear"));
     }
     if let (true, Some(font)) = (prep.opts.labels, font) {
         let f = font.replace('\\', "/").replace(':', "\\:");
@@ -169,18 +170,24 @@ fn load_frames(prep: &Prepared, env: &Env, progress: Progress) -> Result<HashMap
     Ok(out)
 }
 
-/// Encode the picture and the mix to `out` (H.264 + AAC in MP4).
+/// Encode the picture and the mix: the master first (`<out>.master.mp4`, H.264
+/// + AAC), then the final file through `web-default`.
+///
+/// Keeping the master means a finished song can be re-encoded to another
+/// preset later without playing every note again.
 pub fn render_video(
     prep: &Prepared,
     mixed: &Mixed,
     env: &Env,
     font: Option<&str>,
+    encoder: Option<&ytp_encode::Encoder>,
     out: &Path,
     progress: Progress,
 ) -> Result<()> {
     let (cw, ch) = prep.canvas;
     let screen_name = prep.opts.screen();
     let retro = screen_name != "none";
+    let master = ytp_media::master_path(out);
     say(progress, "tiles", 0, 1)?;
     let frames_of = load_frames(prep, env, progress)?;
     let starts_of: HashMap<&str, Vec<f64>> =
@@ -191,6 +198,7 @@ pub fn render_video(
     std::fs::write(&wav_path, mixed.wav()).map_err(|e| Error::Internal(format!("cannot write the mix: {e}")))?;
     let cleanup = |e: Error| {
         let _ = std::fs::remove_file(&wav_path);
+        let _ = std::fs::remove_file(&master);
         let _ = std::fs::remove_file(out);
         e
     };
@@ -201,7 +209,7 @@ pub fn render_video(
     cmd.args(["-map", "0:v", "-map", "1:a", "-vf", &filter_chain(prep, font)]);
     cmd.args(["-c:v", "libx264", "-preset", "veryfast", "-crf", if retro { "16" } else { "23" }]);
     cmd.args(["-c:a", "aac", "-b:a", "192k", "-ar", &crate::SR.to_string(), "-ac", "2", "-shortest", "-movflags", "+faststart"]);
-    cmd.arg(out);
+    cmd.arg(&master);
     cmd.stdin(Stdio::piped()).stdout(Stdio::null()).stderr(Stdio::piped());
     #[cfg(windows)]
     {
@@ -295,6 +303,7 @@ pub fn render_video(
                 let log = err_reader.join().unwrap_or_default();
                 let log = ytp_media::proc::trim_stderr(&log, 600);
                 let _ = std::fs::remove_file(&wav_path);
+                let _ = std::fs::remove_file(&master);
                 let _ = std::fs::remove_file(out);
                 return msg(format!("FFmpeg failed: {log}"));
             }
@@ -310,15 +319,62 @@ pub fn render_video(
     let _ = std::fs::remove_file(&wav_path);
     match result {
         Ok(()) => {
-            if !out.is_file() {
+            if !master.is_file() {
                 return msg("the encoder produced no video");
             }
-            let _ = say(progress, "encoding", 1, 1);
-            Ok(())
+            finish_encode(prep, env, encoder, &master, out, progress)
         }
         Err(e) => {
+            let _ = std::fs::remove_file(&master);
             let _ = std::fs::remove_file(out);
             Err(e)
+        }
+    }
+}
+
+/// Turn the master into the result with `web-default`, at the size the role's
+/// quota decided.
+fn finish_encode(
+    prep: &Prepared,
+    env: &Env,
+    encoder: Option<&ytp_encode::Encoder>,
+    master: &Path,
+    out: &Path,
+    progress: Progress,
+) -> Result<()> {
+    let own;
+    let encoder = match encoder {
+        Some(e) => e,
+        None => {
+            own = ytp_encode::Encoder::new(env.ffmpeg);
+            &own
+        }
+    };
+    let Some(preset) = encoder.presets().get("web-default") else {
+        let _ = std::fs::remove_file(master);
+        return msg("the web-default preset is missing");
+    };
+    let last = AtomicUsize::new(0);
+    let report = |f: f32| {
+        let done = (f.clamp(0.0, 1.0) * 100.0) as usize;
+        last.store(done, Ordering::Relaxed);
+        progress("encoding", done, 100);
+    };
+    let cancel = || !progress("encoding", last.load(Ordering::Relaxed), 100);
+    let overrides = ytp_encode::Overrides { max_width: 0, max_height: prep.out_size.1 as u32 };
+    match encoder.encode(master, preset, overrides, out, &report, &cancel) {
+        Ok(_) => {
+            let _ = say(progress, "encoding", 100, 100);
+            Ok(())
+        }
+        Err(ytp_encode::EncodeError::Cancelled) => {
+            let _ = std::fs::remove_file(master);
+            Err(Error::Cancelled)
+        }
+        Err(e) => {
+            let _ = std::fs::remove_file(master);
+            let _ = std::fs::remove_file(out);
+            msg(format!("the final encode failed: {e}"))
         }
     }
 }

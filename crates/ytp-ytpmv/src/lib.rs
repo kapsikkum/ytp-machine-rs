@@ -39,6 +39,15 @@ pub const SRC_H: usize = 270;
 pub const MAX_SECONDS: f64 = 900.0;
 /// Let the last notes ring out after the final note-off.
 pub const TAIL: f64 = 0.8;
+/// The finished picture size for a height ceiling (`max_height`, 0 = none).
+///
+/// The tiles are laid out for the final size rather than rendered at 1080p and
+/// scaled afterwards: the role quota decides how big the picture is, and
+/// `852x480` is a cheaper encode than `1920x1080` downscaled.
+pub fn fit_out_size(max_height: u32) -> (usize, usize) {
+    let (w, h) = ytp_encode::target::fit_even(OUT_W as u32, OUT_H as u32, 0, max_height);
+    (w as usize, h as usize)
+}
 
 #[derive(Debug)]
 pub enum Error {
@@ -83,4 +92,22 @@ pub(crate) fn say(progress: Progress, stage: &str, done: usize, total: usize) ->
 pub fn round_to(x: f64, digits: i32) -> f64 {
     let k = 10f64.powi(digits);
     (x * k).round_ties_even() / k
+}
+
+#[cfg(test)]
+mod tests {
+    use super::fit_out_size;
+
+    #[test]
+    fn the_role_height_decides_the_picture_size() {
+        // No ceiling, or one above 1080p: the full picture.
+        assert_eq!(fit_out_size(0), (1920, 1080));
+        assert_eq!(fit_out_size(2160), (1920, 1080));
+        assert_eq!(fit_out_size(1080), (1920, 1080));
+        assert_eq!(fit_out_size(720), (1280, 720));
+        // 854 wide rounded down to an even 852.
+        assert_eq!(fit_out_size(480), (852, 480));
+        // A silly ceiling still leaves a usable picture.
+        assert_eq!(fit_out_size(100), (178, 100));
+    }
 }

@@ -219,7 +219,7 @@ fn render_segments(env: &Env, segments: &[Segment], out: &Path, keep_going: &dyn
     let tmp = out.with_extension(format!("{unique:x}.tmp.mp4"));
     let audio = AudioCache::new(env.renderer.audio());
     let opts = GenerationOptions::default();
-    let job = RenderJob { segments, options: &opts, captions: false, out: &tmp, audio: &audio };
+    let job = RenderJob { segments, options: &opts, captions: false, out: &tmp, audio: &audio, max_height: 0, encoder: None, finish: false, cancel: None };
     let progress = |_: &str, _: usize, _: usize| keep_going();
     let res = env.renderer.render(&job, &progress);
     let res = match res {

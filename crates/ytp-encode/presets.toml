@@ -1,0 +1,161 @@
+# Built-in encode presets. Each table is one preset; its key is its name.
+# Admin presets in <data>/presets/*.toml add to or override these by name.
+#
+# Fields (all except quality mode's own value have defaults):
+#   container      mp4 | mkv | gif | m4a | ogg
+#   video_codec    h264 | h265 | gif | none
+#   audio_codec    aac | opus | none
+#   quality        crf | target_size_mb | bitrate
+#   crf            constant quality (0-51), for quality = "crf"
+#   target_mb      target file size in decimal megabytes, for quality = "target_size_mb"
+#   bitrate_kbps   video bitrate (audio-only: audio bitrate), for quality = "bitrate"
+#   audio_kbps     audio bitrate (default 128)
+#   speed          libx264/libx265 speed preset (default "medium")
+#   max_width      do not upscale beyond this (0 = the source's width)
+#   max_height     do not upscale beyond this (0 = the source's height)
+#   fps_cap        frames per second ceiling (0 = the source's rate)
+#   gop            keyframe interval; 1 = all-intra (0 = codec default)
+#   tune           libx264 tune (e.g. fastdecode); omitted by default
+#   hw             auto | never (hardware encoder when one works)
+#   faststart      put the index first in MP4 (default true)
+#   hq             requires the export.hq permission
+#   extra_args     extra ffmpeg output arguments, appended before the output path
+
+[web-default]
+title = "Web (MP4, H.264)"
+container = "mp4"
+video_codec = "h264"
+audio_codec = "aac"
+quality = "crf"
+crf = 23
+audio_kbps = 128
+speed = "fast"
+max_width = 1920
+max_height = 1080
+fps_cap = 30
+hw = "auto"
+faststart = true
+
+[discord-10mb]
+title = "Discord (10 MB)"
+container = "mp4"
+video_codec = "h264"
+audio_codec = "aac"
+quality = "target_size_mb"
+target_mb = 10
+audio_kbps = 96
+speed = "fast"
+max_width = 1920
+max_height = 1080
+fps_cap = 30
+hw = "never"
+
+[discord-25mb]
+title = "Discord (25 MB)"
+container = "mp4"
+video_codec = "h264"
+audio_codec = "aac"
+quality = "target_size_mb"
+target_mb = 25
+audio_kbps = 128
+speed = "fast"
+max_width = 1920
+max_height = 1080
+fps_cap = 30
+hw = "never"
+
+[discord-50mb]
+title = "Discord (50 MB)"
+container = "mp4"
+video_codec = "h264"
+audio_codec = "aac"
+quality = "target_size_mb"
+target_mb = 50
+audio_kbps = 128
+speed = "fast"
+max_width = 1920
+max_height = 1080
+fps_cap = 30
+hw = "never"
+
+[matrix]
+title = "Matrix (50 MB)"
+container = "mp4"
+video_codec = "h264"
+audio_codec = "aac"
+quality = "target_size_mb"
+target_mb = 50
+audio_kbps = 128
+speed = "fast"
+max_width = 1920
+max_height = 1080
+fps_cap = 30
+hw = "never"
+
+[hq-archive]
+title = "HQ archive (near-lossless)"
+container = "mp4"
+video_codec = "h264"
+audio_codec = "aac"
+quality = "crf"
+crf = 18
+audio_kbps = 192
+speed = "slow"
+max_width = 3840
+max_height = 2160
+fps_cap = 60
+hw = "never"
+hq = true
+
+[preview-proxy]
+title = "Preview proxy (all-intra, 480p)"
+container = "mp4"
+video_codec = "h264"
+audio_codec = "aac"
+quality = "crf"
+crf = 27
+audio_kbps = 64
+speed = "ultrafast"
+max_width = 854
+max_height = 480
+fps_cap = 30
+gop = 1
+tune = "fastdecode"
+hw = "auto"
+
+[gif]
+title = "Animated GIF"
+container = "gif"
+video_codec = "gif"
+audio_codec = "none"
+quality = "crf"
+crf = 23
+speed = "medium"
+max_width = 480
+max_height = 480
+fps_cap = 15
+hw = "never"
+
+[audio-only]
+title = "Audio only (M4A/AAC)"
+container = "m4a"
+video_codec = "none"
+audio_codec = "aac"
+quality = "bitrate"
+bitrate_kbps = 192
+audio_kbps = 192
+max_width = 0
+max_height = 0
+fps_cap = 0
+
+[audio-opus]
+title = "Audio only (OGG/Opus)"
+container = "ogg"
+video_codec = "none"
+audio_codec = "opus"
+quality = "bitrate"
+bitrate_kbps = 128
+audio_kbps = 128
+max_width = 0
+max_height = 0
+fps_cap = 0

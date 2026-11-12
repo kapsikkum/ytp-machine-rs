@@ -57,7 +57,10 @@ Built-in roles: `admin` (all), `editor`, `creator`, `guest`.
 | POST | /api/ytp/generate | `{ text, voice?, captions?, options? }` | `{ job_id }` | generate.ytp |
 | GET | /api/jobs/:id | – | `Job` | owner, or jobs.view_all |
 | DELETE | /api/jobs/:id | – | 204 | owner, or jobs.cancel_any |
-| GET | /api/jobs/:id/result | – | the finished `video/mp4` (Range supported; not done 409) | owner, or jobs.view_all |
+| GET | /api/jobs/:id/result | – | the finished file (Range supported; not done 409): `video/mp4` for a render, the preset's container for an export | owner, or jobs.view_all |
+| GET | /api/encode/presets | – | `{ hq: boolean, presets: Preset[] }` (`allowed: false` marks an `hq` preset the caller may not use) | export.render |
+| POST | /api/jobs/:id/export | `{ preset }` | `{ job_id }` (a new `encode` job; unknown preset 422, `hq` preset without export.hq 403, source not done or with no video file 409) | export.render (and export.hq for an hq preset); the source's owner, or jobs.view_all |
+| GET | /api/admin/encoders | – | `{ ffmpeg, ok, encoders: { encoder, available, detail }[], presets }` (each hardware encoder tried with a test encode) | settings.manage |
 
 Not yet implemented (later phases, UI may call and show "not available yet" on 501):
 `/api/projects/*`.
@@ -104,9 +107,11 @@ built (`GET /api/ytpmv/midi/:id` does that work the first time, a few seconds fo
 `render` queues a job like `/api/ytp/generate` (same quotas, queue and WebSocket events). The job
 record has `kind: "ytpmv"`, `text` = the song title, `voice` = the default corpus and `options` =
 `{ midi_id, parts, options }`. Progress reads `measuring words`, `choosing sounds`, `playing notes`, `loading clips`, `drawing frames` and
-`encoding` (0–100 %); `GET /api/jobs/:id/result` is a 1920×1080 `video/mp4`. Its `report` is
+`encoding` (0–100 %); `GET /api/jobs/:id/result` is a `video/mp4` whose size follows the role's
+`max_height` (1920×1080 up to 1080p, 1280×720, 852×480 …; the tiles are laid out at that size rather
+than rendered at 1080p and scaled). Its `report` is
 `{ duration, size: [w, h], song, options (as used), parts: [...], problems: string[] }`.
-`max_render_seconds` fails a longer render (`your limit is N s`); `max_height` is not applied yet.
+`max_render_seconds` fails a longer render (`your limit is N s`).
 
 `requests_per_minute` is spent by `sample`, `sample/audio`, `preview`, `preview-mix` and `render`;
 uploading, renaming and deleting a MIDI file are not counted.
@@ -152,7 +157,15 @@ sentence render faster. It changes nothing about what is chosen; the picture of 
 differs from an uncached render only by one more near-lossless encode (about 53 dB PSNR).
 
 Jobs live in memory while active. Finished jobs are written to `<data-dir>/output/<id>.json` and
-`<id>.mp4`, reloaded on startup, and the newest 200 are kept for 7 days.
+`<id>.mp4`, with the intermediate master kept beside it as `<id>.master.mp4` (that is what an
+export re-encodes), reloaded on startup, and the newest 200 are kept for 7 days.
+
+`POST /api/jobs/:id/export` queues an `encode` job that finishes a finished job again with another
+preset (see `GET /api/encode/presets`), without rendering it again. Its result is served at
+`/api/jobs/:id/result` in the preset's container (`video/mp4`, `image/gif`, `audio/mp4`, `audio/ogg`,
+`video/x-matroska`); `result_file` names the file when it is not `<id>.mp4`. Deleting either job
+removes its own result, and deleting the source also removes the master an export would need.
+
 A job somebody else owns is `404` unless they hold `jobs.view_all`. A token needs `generate.ytp`,
 `generate.ytpmv` or `jobs.view_all` to see jobs.
 
@@ -161,8 +174,9 @@ A job somebody else owns is `404` unless they hold `jobs.view_all`. A token need
 deleting somebody else's job needs `jobs.cancel_any` (403 otherwise) and is audited as `job.cancel`.
 
 Job events go to the WebSocket topics `job:<id>` and `jobs`. While running the message reads
-`loading`, `choosing clips n/m`, `encoding` or `joining`; progress runs 0–2 % loading,
-→ 40 % resolving, 40–95 % encoding, 96 % joining, 100 % done.
+`loading`, `choosing clips n/m`, `encoding`, `joining` or `compressing`; progress runs 0–2 % loading,
+→ 40 % resolving, 40–95 % encoding, 96 % joining, 95–99 % compressing the master into the result,
+100 % done. An export job reports `encoding as <preset>` over the same 0–100 %.
 
 "session" above means a cookie session; API tokens get 403 there. Admin safeguards: the last
 enabled admin cannot be demoted, disabled or deleted (409), you cannot delete yourself (409),
@@ -184,7 +198,13 @@ Job       = { id: string, owner: number, owner_name: string, state: "queued"|"ru
               timeline?: { i: number /* index in report.tokens */, start: number, end: number }[],
               duration?: number, size_bytes?: number, error?: string, warnings: string[],
               result_url?: string /* "/api/jobs/<id>/result", only when done */,
-              kind?: "ytpmv" /* absent for a sentence; then report is the YTPMV report above */ }
+              result_file?: string /* e.g. "<id>.gif"; absent means "<id>.mp4" */,
+              kind?: "ytpmv" | "encode" /* absent for a sentence; ytpmv report is the YTPMV report above */ }
+Preset    = { name: string, title: string, container: "mp4"|"mkv"|"gif"|"m4a"|"ogg",
+              video_codec: "h264"|"h265"|"gif"|"none", audio_codec: "aac"|"opus"|"none",
+              quality: "crf"|"target_size_mb"|"bitrate", crf: number|null, target_mb: number|null,
+              bitrate_kbps: number|null, audio_kbps: number, max_width: number, max_height: number,
+              fps_cap: number, gop: number, hw: "auto"|"never", hq: boolean, allowed: boolean }
 MidiEntry = { midi_id: string, title: string, duration: number, bpm: number, key: string, time_signature: string,
               tempo_changes: number, parts: number, drums: number, notes: number, description: string,
               bytes: number, added: number /* unix seconds */ }

@@ -25,6 +25,8 @@ pub struct Inner {
     pub jobs: Jobs,
     /// Cuts and encodes video; ffmpeg unless a test supplies another.
     pub renderer: Arc<dyn Renderer>,
+    /// Shared encode core: presets, hardware encoders, the final encode.
+    pub encoder: Arc<ytp_encode::Encoder>,
     /// The MIDI library and what YTPMV renders are made from.
     pub ytpmv: crate::ytpmv::Service,
 }
@@ -53,6 +55,13 @@ impl AppState {
 
     pub async fn with_renderer(config: Config, renderer: Arc<dyn Renderer>) -> Result<Self> {
         std::fs::create_dir_all(&config.data_dir)?;
+        let ffmpeg = config.ffmpeg.clone().unwrap_or_else(|| "ffmpeg".into());
+        let (presets, preset_problems) =
+            ytp_encode::PresetSet::with_dir(&config.data_dir.join("presets"));
+        for problem in &preset_problems {
+            tracing::warn!(problem = %problem, "a preset file was skipped");
+        }
+        let encoder = Arc::new(ytp_encode::Encoder::with_presets(ffmpeg.clone(), presets));
         let auth = AuthStore::open(&config.data_dir.join("app.db")).await?;
         let corpora = CorpusStore::open(config.data_dir.join("corpora"), Limits::default())?;
         let setup_token = if auth.user_count().await? == 0 {
@@ -62,7 +71,7 @@ impl AppState {
         };
         let (events, _) = broadcast::channel(256);
         let jobs = Jobs::new(&config.data_dir, config.job_workers, events.clone());
-        let ytpmv = crate::ytpmv::Service::new(&config.data_dir, config.ffmpeg.clone().unwrap_or_else(|| "ffmpeg".into()));
+        let ytpmv = crate::ytpmv::Service::new(&config.data_dir, ffmpeg);
         let state = Self(Arc::new(Inner {
             config,
             auth,
@@ -73,6 +82,7 @@ impl AppState {
             events,
             jobs,
             renderer,
+            encoder,
             ytpmv,
         }));
         crate::jobs::start_workers(&state);

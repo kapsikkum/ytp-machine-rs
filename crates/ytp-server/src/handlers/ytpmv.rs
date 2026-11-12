@@ -334,6 +334,7 @@ pub async fn preview(State(st): State<AppState>, me: CurrentUser, ApiJson(body):
             audio_only: true,
             start_seconds: 0.0,
             only_part: None,
+            out_size: (ytp_ytpmv::OUT_W, ytp_ytpmv::OUT_H),
         };
         mix::preview_part(&req, &part, seconds, &|_, _, _| true).map_err(api_error)
     })
@@ -420,6 +421,7 @@ pub async fn preview_mix(State(st): State<AppState>, me: CurrentUser, ApiJson(bo
             audio_only: true,
             start_seconds: start,
             only_part: None,
+            out_size: (ytp_ytpmv::OUT_W, ytp_ytpmv::OUT_H),
         };
         let progress = |_: &str, _: usize, _: usize| true;
         let prep = mix::prepare(&req, &progress).map_err(api_error)?;

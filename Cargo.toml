@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/ytp-core", "crates/ytp-auth", "crates/ytp-corpus", "crates/ytp-server", "crates/ytp-text", "crates/ytp-splice", "crates/ytp-media", "crates/ytp-music", "crates/ytp-ytpmv"]
+members = ["crates/ytp-core", "crates/ytp-auth", "crates/ytp-corpus", "crates/ytp-server", "crates/ytp-text", "crates/ytp-splice", "crates/ytp-media", "crates/ytp-music", "crates/ytp-ytpmv", "crates/ytp-encode"]
 
 [workspace.package]
 version = "0.1.0"
@@ -32,6 +32,7 @@ subtle = "2"
 tar = { version = "0.4", default-features = false }
 tempfile = "3"
 thiserror = "2"
+toml = "0.8"
 tokio = { version = "1", features = ["full"] }
 tokio-tungstenite = "0.26"
 tower = { version = "0.5", features = ["util"] }

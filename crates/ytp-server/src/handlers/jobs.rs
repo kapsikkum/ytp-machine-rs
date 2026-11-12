@@ -132,20 +132,32 @@ pub async fn result(
     if rec.state != JobState::Done {
         return Err(Error::conflict("the job has no result").into());
     }
-    let path = st.jobs.result_path(&id);
+    let path = st.jobs.result_path_of(&rec);
     if !path.is_file() {
         return Err(ApiError::not_found());
     }
+    let ext = path
+        .extension()
+        .and_then(|x| x.to_str())
+        .unwrap_or("mp4")
+        .to_string();
+    let mime = match ext.as_str() {
+        "gif" => "image/gif",
+        "m4a" => "audio/mp4",
+        "ogg" => "audio/ogg",
+        "mkv" => "video/x-matroska",
+        _ => "video/mp4",
+    };
     let mut res = ServeFile::new(path)
         .oneshot(req)
         .await
         .map_err(|e| ApiError::from(Error::internal(e)))?
         .into_response();
     let h = res.headers_mut();
-    h.insert(header::CONTENT_TYPE, HeaderValue::from_static("video/mp4"));
+    h.insert(header::CONTENT_TYPE, HeaderValue::from_static(mime));
     h.insert(
         header::CONTENT_DISPOSITION,
-        HeaderValue::from_str(&format!("inline; filename=\"ytp-{id}.mp4\""))
+        HeaderValue::from_str(&format!("inline; filename=\"ytp-{id}.{ext}\""))
             .unwrap_or_else(|_| HeaderValue::from_static("inline")),
     );
     h.insert(header::CACHE_CONTROL, HeaderValue::from_static("private, max-age=3600"));

@@ -22,6 +22,7 @@ ytp-splice = { path = "../ytp-splice" }
 ytp-media = { path = "../ytp-media" }
 ytp-music = { path = "../ytp-music" }
 ytp-ytpmv = { path = "../ytp-ytpmv" }
+ytp-encode = { path = "../ytp-encode" }
 anyhow = { workspace = true }
 axum = { workspace = true }
 clap = { workspace = true }

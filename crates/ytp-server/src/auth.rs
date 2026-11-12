@@ -186,6 +186,7 @@ fn is_throttled(m: &Method, path: &str) -> bool {
     // Uploading, renaming and deleting a MIDI file is cheap; only the routes
     // that make audio or video count.
     path == "/api/ytp/generate"
+        || (path.starts_with("/api/jobs/") && path.ends_with("/export"))
         || matches!(
             path,
             "/api/ytpmv/sample" | "/api/ytpmv/sample/audio" | "/api/ytpmv/preview" | "/api/ytpmv/preview-mix" | "/api/ytpmv/render"

@@ -264,6 +264,8 @@ async fn route_table_every_route_declares_access() {
         Permission::CorpusDelete,
         Permission::GenerateYtp,
         Permission::GenerateYtpmv,
+        Permission::ExportRender,
+        Permission::SettingsManage,
     ] {
         assert!(
             specs.iter().any(|s| s.access == Access::Perm(p)),

@@ -10,7 +10,7 @@ use axum::routing::{on, MethodFilter, MethodRouter};
 use axum::Router;
 use ytp_auth::Permission::{self, *};
 
-use crate::handlers::{admin, auth, corpora, jobs, misc, tokens, ytpmv};
+use crate::handlers::{admin, auth, corpora, encode, jobs, misc, tokens, ytpmv};
 use crate::{ws, AppState};
 
 /// Who may call a route.
@@ -205,6 +205,7 @@ pub fn api(state: &AppState) -> (Router<AppState>, Vec<RouteSpec>) {
             admin::delete_role,
         )
         .get("/api/admin/audit", Perm(AuditView), admin::audit)
+        .get("/api/admin/encoders", Perm(SettingsManage), encode::encoders)
         // tokens
         .get("/api/tokens", Perm(TokensCreate), tokens::list)
         .post("/api/tokens", Perm(TokensCreate), tokens::create)
@@ -227,6 +228,9 @@ pub fn api(state: &AppState) -> (Router<AppState>, Vec<RouteSpec>) {
         .get("/api/jobs/{id}", Authenticated, jobs::get)
         .delete("/api/jobs/{id}", Authenticated, jobs::cancel)
         .get("/api/jobs/{id}/result", Authenticated, jobs::result)
+        // re-encode a finished job's master with another preset
+        .get("/api/encode/presets", Perm(ExportRender), encode::presets)
+        .post("/api/jobs/{id}/export", Perm(ExportRender), encode::export)
         // ytpmv: a MIDI library per user, previews that answer with audio,
         // and a render queued like a sentence (which also needs export.render,
         // checked in the handler)

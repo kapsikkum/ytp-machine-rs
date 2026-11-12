@@ -64,6 +64,8 @@ pub struct Request<'a> {
     pub start_seconds: f64,
     /// Play and recommend only this part (the song still decides how a chip switch routes the others).
     pub only_part: Option<String>,
+    /// Finished picture size (the role's `max_height` decided it).
+    pub out_size: (usize, usize),
 }
 
 /// A tile of the picture.
@@ -95,6 +97,8 @@ pub struct Prepared {
     pub tiles: Vec<Tile>,
     /// The canvas size in the machine's own pixels.
     pub canvas: (usize, usize),
+    /// The finished picture size.
+    pub out_size: (usize, usize),
     pub audio_only: bool,
 }
 
@@ -355,8 +359,9 @@ pub fn prepare(req: &Request, progress: Progress) -> Result<Prepared> {
     }
 
     // The tiles: every shown part that has a sound, in the order asked for.
+    let (out_w, out_h) = req.out_size;
     let mut tiles = Vec::new();
-    let mut canvas = (OUT_W, OUT_H);
+    let mut canvas = (out_w, out_h);
     if !req.audio_only {
         let mut ids: Vec<String> = shown.iter().filter(|p| sample_of.contains_key(&p.id)).map(|p| p.id.clone()).collect();
         if ids.is_empty() && !opts.synth {
@@ -368,8 +373,8 @@ pub fn prepare(req: &Request, progress: Progress) -> Result<Prepared> {
             Some(sz) => sz,
             None => {
                 let cols = (ids.len().max(1) as f64).sqrt().ceil() as usize;
-                let cw = OUT_W.min(cols * SRC_W);
-                let ch = (2usize).max(cw * OUT_H / OUT_W / 2 * 2);
+                let cw = out_w.min(cols * SRC_W);
+                let ch = (2usize).max(cw * out_h / out_w / 2 * 2);
                 if opts.draft {
                     ((2usize).max(cw / 4 * 2), (2usize).max(ch / 4 * 2))
                 } else {
@@ -378,9 +383,9 @@ pub fn prepare(req: &Request, progress: Progress) -> Result<Prepared> {
             }
         };
         canvas = (cw, ch);
-        let out_cells = grid_cells(ids.len(), OUT_W, OUT_H, &opts.layout, opts.center_tiles);
+        let out_cells = grid_cells(ids.len(), out_w, out_h, &opts.layout, opts.center_tiles);
         for (id, (x, y, w, h)) in ids.into_iter().zip(out_cells) {
-            let cell = (x * cw / OUT_W, y * ch / OUT_H, (x + w) * cw / OUT_W - x * cw / OUT_W, (y + h) * ch / OUT_H - y * ch / OUT_H);
+            let cell = (x * cw / out_w, y * ch / out_h, (x + w) * cw / out_w - x * cw / out_w, (y + h) * ch / out_h - y * ch / out_h);
             tiles.push(Tile { id, cell, out_cell: (x, y, w, h) });
         }
     }
@@ -400,6 +405,7 @@ pub fn prepare(req: &Request, progress: Progress) -> Result<Prepared> {
         cuts,
         tiles,
         canvas,
+        out_size: req.out_size,
         audio_only: req.audio_only,
     })
 }
@@ -947,6 +953,7 @@ pub fn preview_part(req: &Request, part_settings: &Value, seconds: f64, progress
         audio_only: true,
         start_seconds: t_from,
         only_part: Some(id.to_string()),
+        out_size: (OUT_W, OUT_H),
     };
     let prep = prepare(&sub, progress)?;
     if !prep.playing.contains(&id.to_string()) {
@@ -987,7 +994,7 @@ pub fn render_summary(prep: &Prepared, mixed: &Mixed) -> Value {
     }
     json!({
         "duration": round_to(prep.t_end - prep.t_from, 2),
-        "size": [OUT_W, OUT_H],
+        "size": [prep.out_size.0, prep.out_size.1],
         "song": song_meta,
         "options": options,
         "parts": parts_report(prep, mixed),

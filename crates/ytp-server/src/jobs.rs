@@ -67,6 +67,10 @@ pub struct JobRecord {
     pub size_bytes: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub error: Option<String>,
+    /// File name of the result under the output directory; absent means
+    /// `<id>.mp4` (encode jobs can be `.gif`, `.m4a`, `.ogg` or `.mkv`).
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub result_file: Option<String>,
     #[serde(default)]
     pub warnings: Vec<String>,
     #[serde(skip_serializing_if = "Option::is_none", default)]
@@ -123,6 +127,18 @@ fn new_id() -> String {
     format!("{a:016x}{:04x}", b & 0xffff)
 }
 
+/// The job id a file in the output directory belongs to: `<id>.mp4`,
+/// `<id>.master.mp4`, `<id>.gif`, `<id>.master.mp4.part0.mp4`…
+fn output_id(path: &Path) -> Option<String> {
+    let name = path.file_name()?.to_string_lossy();
+    let (id, rest) = name.split_once('.')?;
+    if id.len() == 20 && id.bytes().all(|b| b.is_ascii_hexdigit()) && !rest.is_empty() {
+        Some(id.to_string())
+    } else {
+        None
+    }
+}
+
 impl Jobs {
     pub fn new(data_dir: &Path, workers: usize, events: broadcast::Sender<Event>) -> Self {
         let dir = data_dir.join("output");
@@ -150,13 +166,11 @@ impl Jobs {
                             last_emitted: 1.0,
                         },
                     );
-                } else if p.extension().is_some_and(|x| x == "mp4") {
-                    // A result whose sidecar never got written (a crash).
-                    let id = p.file_stem().map(|s| s.to_string_lossy().into_owned());
-                    if let Some(id) = id {
-                        if !dir.join(format!("{id}.json")).exists() {
-                            let _ = std::fs::remove_file(&p);
-                        }
+                } else if let Some(id) = output_id(&p) {
+                    // A result or master whose sidecar never got written (a
+                    // crash), or a chunk left behind by an interrupted join.
+                    if !dir.join(format!("{id}.json")).exists() {
+                        let _ = std::fs::remove_file(&p);
                     }
                 }
             }
@@ -183,6 +197,20 @@ impl Jobs {
 
     pub fn result_path(&self, id: &str) -> PathBuf {
         self.dir.join(format!("{id}.mp4"))
+    }
+
+    /// The file a finished job's result is in (`<id>.mp4` for sentence and
+    /// song renders, the preset's container for an encode).
+    pub fn result_path_of(&self, rec: &JobRecord) -> PathBuf {
+        match &rec.result_file {
+            Some(file) => self.dir.join(file),
+            None => self.result_path(&rec.id),
+        }
+    }
+
+    /// A file in the output directory, by name.
+    pub fn output_path(&self, name: &str) -> PathBuf {
+        self.dir.join(name)
     }
 
     fn sidecar(&self, id: &str) -> PathBuf {
@@ -247,6 +275,7 @@ impl Jobs {
             duration: None,
             size_bytes: None,
             error: None,
+            result_file: None,
             warnings: Vec::new(),
             result_url: None,
         };
@@ -288,16 +317,21 @@ impl Jobs {
                 Some(CancelOutcome::Stopping)
             }
             _ => {
+                let file = e.rec.result_file.clone();
                 g.map.remove(id);
                 drop(g);
-                self.delete_files(id);
+                self.delete_files(id, file.as_deref());
                 Some(CancelOutcome::Removed)
             }
         }
     }
 
-    fn delete_files(&self, id: &str) {
+    fn delete_files(&self, id: &str, result_file: Option<&str>) {
         let _ = std::fs::remove_file(self.result_path(id));
+        let _ = std::fs::remove_file(ytp_media::master_path(&self.result_path(id)));
+        if let Some(file) = result_file {
+            let _ = std::fs::remove_file(self.dir.join(file));
+        }
         let _ = std::fs::remove_file(self.sidecar(id));
     }
 
@@ -365,6 +399,7 @@ impl Jobs {
                     r.timeline = Some(done.timeline);
                     r.duration = Some(done.duration);
                     r.size_bytes = Some(done.size_bytes);
+                    r.result_file = done.file;
                     r.result_url = Some(format!("/api/jobs/{id}/result"));
                 }
                 Err(Failure::Cancelled) => {
@@ -381,7 +416,7 @@ impl Jobs {
             r.clone()
         };
         if rec.state != JobState::Done {
-            let _ = tokio::fs::remove_file(self.result_path(id)).await;
+            self.delete_files(id, rec.result_file.as_deref());
         }
         if let Ok(bytes) = serde_json::to_vec(&rec) {
             let _ = tokio::fs::write(self.sidecar(id), bytes).await;
@@ -394,29 +429,29 @@ impl Jobs {
     /// Forget old finished jobs and their files.
     fn prune(&self) {
         let cutoff = now() - KEEP_FOR;
-        let mut finished: Vec<(String, String)> = {
+        let mut finished: Vec<(String, String, Option<String>)> = {
             let g = self.inner.lock().unwrap();
             g.map
                 .values()
                 .filter(|e| !e.rec.active())
-                .map(|e| (e.rec.id.clone(), e.rec.finished_at.clone().unwrap_or_default()))
+                .map(|e| (e.rec.id.clone(), e.rec.finished_at.clone().unwrap_or_default(), e.rec.result_file.clone()))
                 .collect()
         };
         finished.sort_by(|a, b| b.1.cmp(&a.1));
         let old_cut = rfc3339(cutoff);
-        let drop_ids: Vec<String> = finished
+        let drop_ids: Vec<(String, Option<String>)> = finished
             .iter()
             .enumerate()
-            .filter(|(i, (_, at))| *i >= KEEP_FINISHED || at.as_str() < old_cut.as_str())
-            .map(|(_, (id, _))| id.clone())
+            .filter(|(i, (_, at, _))| *i >= KEEP_FINISHED || at.as_str() < old_cut.as_str())
+            .map(|(_, (id, _, file))| (id.clone(), file.clone()))
             .collect();
         if drop_ids.is_empty() {
             return;
         }
         let mut g = self.inner.lock().unwrap();
-        for id in &drop_ids {
+        for (id, file) in &drop_ids {
             g.map.remove(id);
-            self.delete_files(id);
+            self.delete_files(id, file.as_deref());
         }
     }
 
@@ -444,6 +479,8 @@ pub(crate) struct Done {
     pub timeline: Value,
     pub duration: f64,
     pub size_bytes: u64,
+    /// File name under the output directory, when it is not `<id>.mp4`.
+    pub file: Option<String>,
 }
 
 pub(crate) enum Failure {
@@ -480,6 +517,7 @@ fn stage_progress(stage: &str, done: usize, total: usize) -> (f32, String) {
         ),
         "encoding" => (0.40 + 0.55 * frac, "encoding".into()),
         "joining" => (0.96, "joining the parts".into()),
+        "finishing" => (0.95 + 0.04 * frac, "compressing".into()),
         other => (0.0, other.to_string()),
     }
 }
@@ -545,6 +583,9 @@ async fn run(st: &AppState, id: &str, cancel: Arc<AtomicBool>) -> Outcome {
     }
     if rec.kind.as_deref() == Some("ytpmv") {
         return crate::ytpmv::run(st, id, &rec, quota, cancel).await;
+    }
+    if rec.kind.as_deref() == Some("encode") {
+        return crate::encode::run(st, id, &rec, quota, cancel).await;
     }
 
     st.jobs.set_progress(id, 0.0, "loading the corpus".into());
@@ -668,6 +709,10 @@ fn generate(
         captions: rec.captions,
         out,
         audio: &audio,
+        max_height: quota.max_height,
+        encoder: Some(st.encoder.as_ref()),
+        finish: true,
+        cancel: Some(&|| cancel.load(Ordering::Relaxed)),
     };
     match st.renderer.render(&job, &progress) {
         Ok(()) => {}
@@ -680,6 +725,7 @@ fn generate(
             timeline: Value::Array(spans.iter().map(|s| s.to_json()).collect()),
             duration: (duration * 1000.0).round() / 1000.0,
             size_bytes,
+            file: None,
         }),
         report: Some(report_json),
         options: Some(opts.to_json()),
