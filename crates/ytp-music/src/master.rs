@@ -69,6 +69,30 @@ fn channel(x: &[f64], channels: usize, c: usize) -> Vec<f64> {
 pub fn block_power(x: &[f64], channels: usize, sr: u32) -> Vec<f64> {
     let channels = channels.max(1);
     let frames = x.len() / channels;
+    block_power_by(frames, channels, sr, |i, end| {
+        let seg = &x[(i.min(frames)) * channels..end * channels];
+        (seg.len() / channels >= 64 && seg.iter().any(|v| *v != 0.0)).then(|| seg.to_vec())
+    })
+}
+
+/// `block_power()` of a mono signal that is silent outside `stem`, which
+/// starts at frame `lo` of a `frames`-long signal; the stem need not be
+/// stored (or filtered) for the silence around it. Identical to
+/// `block_power()` of the zero-padded signal.
+pub fn block_power_span(stem: &[f32], lo: usize, frames: usize, sr: u32) -> Vec<f64> {
+    let hi = lo + stem.len();
+    block_power_by(frames, 1, sr, |i, end| {
+        let (a, b) = (i.max(lo), end.min(hi));
+        if end.saturating_sub(i) < 64 || a >= b || !stem[a - lo..b - lo].iter().any(|v| *v != 0.0) {
+            return None;
+        }
+        Some((i..end).map(|p| if p >= lo && p < hi { stem[p - lo] as f64 } else { 0.0 }).collect())
+    })
+}
+
+/// The loop behind both: `seg(i, end)` gives the interleaved frames `i..end`,
+/// or `None` when they are silent (or too few to measure).
+fn block_power_by(frames: usize, channels: usize, sr: u32, seg: impl Fn(usize, usize) -> Option<Vec<f64>>) -> Vec<f64> {
     let block = (0.4 * sr as f64) as usize;
     let hop = (0.1 * sr as f64) as usize;
     let step = 600 * hop;
@@ -76,37 +100,37 @@ pub fn block_power(x: &[f64], channels: usize, sr: u32) -> Vec<f64> {
     let mut i = 0usize;
     loop {
         let end = (i + step + block).min(frames);
-        let seg = &x[(i.min(frames)) * channels..end * channels];
-        let seg_frames = seg.len() / channels;
-        if seg_frames < 64 || !seg.iter().any(|v| *v != 0.0) {
-            out.extend(std::iter::repeat_n(0.0, 1usize.max(step.min(seg_frames) / hop)));
-        } else {
-            let mut total: Option<Vec<f64>> = None;
-            for c in 0..channels {
-                let mut y = k_weight(&channel(seg, channels, c), sr);
-                if y.len() < block {
-                    y.resize(block, 0.0);
+        let seg_frames = end - i.min(frames);
+        match seg(i.min(frames), end) {
+            None => out.extend(std::iter::repeat_n(0.0, 1usize.max(step.min(seg_frames) / hop))),
+            Some(seg) => {
+                let mut total: Option<Vec<f64>> = None;
+                for c in 0..channels {
+                    let mut y = k_weight(&channel(&seg, channels, c), sr);
+                    if y.len() < block {
+                        y.resize(block, 0.0);
+                    }
+                    let mut cs = Vec::with_capacity(y.len() + 1);
+                    cs.push(0.0f64);
+                    let mut run = 0.0f64;
+                    for v in &y {
+                        run += v * v;
+                        cs.push(run);
+                    }
+                    let limit = step.min(y.len() + 1 - block);
+                    let mut pw = Vec::new();
+                    let mut s = 0usize;
+                    while s < limit {
+                        pw.push((cs[s + block] - cs[s]) / block as f64);
+                        s += hop;
+                    }
+                    total = Some(match total {
+                        None => pw,
+                        Some(t) => t.iter().zip(pw.iter()).map(|(a, b)| a + b).collect(),
+                    });
                 }
-                let mut cs = Vec::with_capacity(y.len() + 1);
-                cs.push(0.0f64);
-                let mut run = 0.0f64;
-                for v in &y {
-                    run += v * v;
-                    cs.push(run);
-                }
-                let limit = step.min(y.len() + 1 - block);
-                let mut pw = Vec::new();
-                let mut s = 0usize;
-                while s < limit {
-                    pw.push((cs[s + block] - cs[s]) / block as f64);
-                    s += hop;
-                }
-                total = Some(match total {
-                    None => pw,
-                    Some(t) => t.iter().zip(pw.iter()).map(|(a, b)| a + b).collect(),
-                });
+                out.extend(total.unwrap_or_default());
             }
-            out.extend(total.unwrap_or_default());
         }
         i += step;
         if i >= frames.max(1) {

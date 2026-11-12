@@ -1150,12 +1150,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cf8baf1c55e62ffcace7a9f06f4bd9cd3f0c4beb022d3b367256b91b87513d98"
 
 [[package]]
-name = "midly"
-version = "0.5.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "207d755f4cb882d20c4da58d707ca9130a0c9bc5061f657a4f299b8e36362b7a"
-
-[[package]]
 name = "mime"
 version = "0.3.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2837,6 +2831,7 @@ name = "ytp-media"
 version = "0.1.0"
 dependencies = [
  "serde_json",
+ "sha2 0.10.9",
  "tempfile",
  "thiserror",
  "tracing",
@@ -2848,7 +2843,6 @@ dependencies = [
 name = "ytp-music"
 version = "0.1.0"
 dependencies = [
- "midly",
  "realfft",
  "serde_json",
 ]
@@ -2867,6 +2861,7 @@ dependencies = [
  "rust-embed",
  "serde",
  "serde_json",
+ "sha2 0.10.9",
  "sqlx",
  "tar",
  "tempfile",
@@ -2880,8 +2875,10 @@ dependencies = [
  "ytp-core",
  "ytp-corpus",
  "ytp-media",
+ "ytp-music",
  "ytp-splice",
  "ytp-text",
+ "ytp-ytpmv",
  "zstd",
 ]
 
@@ -2903,6 +2900,19 @@ version = "0.1.0"
 dependencies = [
  "regex",
  "serde_json",
+]
+
+[[package]]
+name = "ytp-ytpmv"
+version = "0.1.0"
+dependencies = [
+ "serde_json",
+ "sha2 0.10.9",
+ "tracing",
+ "ytp-corpus",
+ "ytp-media",
+ "ytp-music",
+ "ytp-splice",
 ]
 
 [[package]]

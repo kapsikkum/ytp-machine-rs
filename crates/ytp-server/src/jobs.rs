@@ -9,7 +9,7 @@ use std::collections::{HashMap, VecDeque};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
-use std::time::{Duration, SystemTime};
+use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -17,6 +17,7 @@ use tokio::sync::{broadcast, Notify};
 use ytp_auth::{Principal, Quota};
 use ytp_core::time::{now, rfc3339};
 use ytp_core::{Error, Event, JobState, Result};
+use ytp_corpus::data::Version;
 use ytp_media::{RenderError, RenderJob};
 use ytp_splice::{
     resolve_text, seeded_rng, timeline, total_duration, AudioCache, Cancelled, GenerationOptions,
@@ -29,6 +30,8 @@ const MAX_TEXT_CHARS: usize = 4000;
 const KEEP_FINISHED: usize = 200;
 const KEEP_FOR: i64 = 7 * 24 * 3600;
 const MAX_VOICES_PER_TEXT: usize = 8;
+const REMOVED_MSG_VOCODE: &str =
+    "the {vocode} effect was removed (the vocoder is being reworked); take it out of the text";
 
 /// What the API shows about a job.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -36,6 +39,9 @@ pub struct JobRecord {
     pub id: String,
     pub owner: i64,
     pub owner_name: String,
+    /// `"ytpmv"` for a song render; absent for a sentence.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub kind: Option<String>,
     pub state: JobState,
     pub progress: f32,
     #[serde(skip_serializing_if = "Option::is_none", default)]
@@ -108,7 +114,7 @@ pub struct Jobs {
     dir: PathBuf,
     events: broadcast::Sender<Event>,
     #[allow(clippy::type_complexity)]
-    pools: Mutex<HashMap<String, (Option<SystemTime>, Arc<Pool>)>>,
+    pools: Mutex<HashMap<String, (Option<Version>, Arc<Pool>)>>,
     pub workers: usize,
 }
 
@@ -187,8 +193,23 @@ impl Jobs {
         self.inner.lock().unwrap().map.get(id).map(|e| e.rec.clone())
     }
 
+    /// Is an unfinished render of `owner` playing MIDI file `midi_id`?
+    pub fn midi_in_use(&self, owner: i64, midi_id: &str) -> bool {
+        self.inner.lock().unwrap().map.values().any(|e| {
+            e.rec.active()
+                && e.rec.owner == owner
+                && e.rec.kind.as_deref() == Some("ytpmv")
+                && e.rec.options["midi_id"] == midi_id
+        })
+    }
+
     /// Queue a job for `owner`.
     pub fn submit(&self, owner: &Principal, spec: NewJob) -> Result<JobRecord> {
+        self.submit_as(owner, spec, None)
+    }
+
+    /// Queue a job of the given kind (`None` is a sentence) for `owner`.
+    pub fn submit_as(&self, owner: &Principal, spec: NewJob, kind: Option<&str>) -> Result<JobRecord> {
         let q = owner.quota;
         if q.max_concurrent_jobs == 0 {
             return Err(Error::forbidden("your role may not run jobs"));
@@ -210,6 +231,7 @@ impl Jobs {
             id: id.clone(),
             owner: owner.user.id,
             owner_name: owner.user.username.clone(),
+            kind: kind.map(str::to_string),
             state: JobState::Queued,
             progress: 0.0,
             message: Some("queued".into()),
@@ -305,7 +327,7 @@ impl Jobs {
         Some((id, cancel))
     }
 
-    fn set_progress(&self, id: &str, progress: f32, message: String) {
+    pub(crate) fn set_progress(&self, id: &str, progress: f32, message: String) {
         let mut g = self.inner.lock().unwrap();
         let Some(e) = g.map.get_mut(id) else { return };
         if e.rec.state != JobState::Running || e.cancel.load(Ordering::Relaxed) {
@@ -399,13 +421,10 @@ impl Jobs {
     }
 
     /// The pool for corpus `name`, built once per version of its database.
-    async fn pool(&self, st: &AppState, name: &str) -> Result<Arc<Pool>> {
-        let db = st.corpora.dir(name).join(ytp_corpus::DB_NAME);
-        let mtime = std::fs::metadata(&db)
-            .and_then(|m| m.modified())
-            .map_err(|_| Error::not_found("no such corpus"))?;
+    pub(crate) async fn pool(&self, st: &AppState, name: &str) -> Result<Arc<Pool>> {
+        let version = st.corpora.version(name).ok_or_else(|| Error::not_found("no such corpus"))?;
         if let Some((m, p)) = self.pools.lock().unwrap().get(name) {
-            if *m == Some(mtime) {
+            if *m == Some(version) {
                 return Ok(p.clone());
             }
         }
@@ -416,27 +435,27 @@ impl Jobs {
         let pool = Arc::new(pool);
         let mut cache = self.pools.lock().unwrap();
         cache.retain(|n, _| st.corpora.dir(n).is_dir());
-        cache.insert(name.to_string(), (Some(mtime), pool.clone()));
+        cache.insert(name.to_string(), (Some(version), pool.clone()));
         Ok(pool)
     }
 }
 
-struct Done {
-    timeline: Value,
-    duration: f64,
-    size_bytes: u64,
+pub(crate) struct Done {
+    pub timeline: Value,
+    pub duration: f64,
+    pub size_bytes: u64,
 }
 
-enum Failure {
+pub(crate) enum Failure {
     Cancelled,
     Failed(String),
 }
 
-struct Outcome {
-    result: std::result::Result<Done, Failure>,
-    report: Option<Value>,
-    options: Option<Value>,
-    warnings: Vec<String>,
+pub(crate) struct Outcome {
+    pub result: std::result::Result<Done, Failure>,
+    pub report: Option<Value>,
+    pub options: Option<Value>,
+    pub warnings: Vec<String>,
 }
 
 impl Outcome {
@@ -476,7 +495,22 @@ pub fn check_text(text: &str) -> Result<String> {
             "text is longer than {MAX_TEXT_CHARS} characters"
         )));
     }
+    if ytp_text::tokenize_full(t, &ytp_text::NoLexicon).iter().any(|tok| tok.fx.vocode) {
+        return Err(Error::invalid(REMOVED_MSG_VOCODE));
+    }
     Ok(t.to_string())
+}
+
+/// Reject options that were removed (sing, vocode) instead of ignoring them.
+pub fn check_options(options: &Value) -> Result<()> {
+    let gone = ytp_splice::removed_options(options);
+    if gone.is_empty() {
+        return Ok(());
+    }
+    Err(Error::invalid(format!(
+        "the option(s) {} were removed (singing and the vocoder are being reworked); leave them out",
+        gone.join(", ")
+    )))
 }
 
 /// Start the worker tasks.
@@ -508,6 +542,9 @@ async fn run(st: &AppState, id: &str, cancel: Arc<AtomicBool>) -> Outcome {
     let (rec, quota) = entry;
     if cancel.load(Ordering::Relaxed) {
         return Outcome { result: Err(Failure::Cancelled), report: None, options: None, warnings: vec![] };
+    }
+    if rec.kind.as_deref() == Some("ytpmv") {
+        return crate::ytpmv::run(st, id, &rec, quota, cancel).await;
     }
 
     st.jobs.set_progress(id, 0.0, "loading the corpus".into());
@@ -563,9 +600,7 @@ fn generate(
     let mut opts = GenerationOptions::from_json(&rec.options);
     let mut rng = seeded_rng(&mut opts);
     let mut warnings = Vec::new();
-    if opts.sing || opts.vocode {
-        warnings.push("sing and the vocoder are not available in this build; rendered as spoken".into());
-    }
+    let _pronunciations = pool.scope();
     let progress = |stage: &str, done: usize, total: usize| -> bool {
         if cancel.load(Ordering::Relaxed) {
             return false;

@@ -157,6 +157,117 @@ export interface JobRecord {
   error?: string;
   warnings: string[];
   result_url?: string;
+  /** `ytpmv` for a MIDI render; absent for a sentence. Then `report` is a {@link YtpmvReport}. */
+  kind?: string;
+}
+
+// ── YTPMV ────────────────────────────────────────────────────────────────────
+
+export interface MidiEntry {
+  midi_id: string;
+  title: string;
+  duration: number;
+  bpm: number;
+  key: string;
+  time_signature: string;
+  tempo_changes: number;
+  parts: number;
+  drums: number;
+  notes: number;
+  description: string;
+  bytes: number;
+  added: number;
+}
+
+export interface AltTake {
+  text: string;
+  take: number;
+  score: number;
+}
+
+export interface Recommended {
+  text: string | null;
+  take: number;
+  takes?: number[];
+  pool?: { text: string; take: number }[];
+  octave: number;
+  mode: string;
+  score: number | null;
+  alternatives: AltTake[];
+}
+
+export interface PartSettingsJson {
+  id: string;
+  corpus: string;
+  text: string | null;
+  take: number;
+  takes: number[];
+  octave: number;
+  volume: number;
+  pan: number;
+  tone: string;
+  program: number | null;
+  mute: boolean;
+  visible: boolean;
+}
+
+export interface PartAnalysis {
+  id: string;
+  name: string;
+  role: string;
+  instrument: string;
+  is_drums: boolean;
+  notes: number;
+  range_midi: [number, number];
+  recommended: Recommended;
+  settings: PartSettingsJson;
+  chip_tones: Record<string, string>;
+  chip_tones_synth: Record<string, string>;
+  /** [start, duration, pitch] */
+  activity: [number, number, number][];
+  program_table?: string;
+}
+
+/** [tone name, what it is] */
+export type ToneChoice = [string, string];
+
+export interface MidiAnalysis {
+  midi_id: string;
+  title: string;
+  duration: number;
+  bpm: number;
+  key: string;
+  time_signature: string;
+  description: string;
+  corpus: string;
+  noises: Record<string, number>;
+  units: Record<string, number>;
+  instruments: {
+    machines: Record<string, { name: string; melodic: ToneChoice[]; drums: ToneChoice[] }>;
+    voice: ToneChoice[];
+    synth: string[];
+    programs: string[];
+    chips: Record<string, string>;
+  };
+  parts: PartAnalysis[];
+  program_tones: Record<string, Record<string, string[]>>;
+}
+
+/** The `X-Ytpmv-Info` header of a preview. */
+export interface YtpmvInfo {
+  from?: number;
+  duration?: number;
+  problems?: string[];
+  parts?: { id: string; corpus: string; volume: number; pan: number }[];
+}
+
+/** The `report` of a finished `ytpmv` job. */
+export interface YtpmvReport {
+  duration: number;
+  size: [number, number];
+  problems: string[];
+  options: Record<string, unknown>;
+  parts: { id?: string; text?: string; tone?: string; corpus?: string }[];
 }
 
 export interface JobEvent {

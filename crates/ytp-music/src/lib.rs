@@ -26,6 +26,7 @@ pub mod drums;
 pub mod dsp;
 pub mod gb;
 pub mod master;
+mod midiread;
 pub mod music;
 pub mod nes;
 pub mod np;

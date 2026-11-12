@@ -6,9 +6,10 @@ use ytp_auth::{secret, AuthStore, LoginLimiter};
 use ytp_core::{Event, Result};
 use ytp_corpus::{CorpusStore, Limits};
 
-use ytp_media::{FfmpegRenderer, Renderer};
+use ytp_media::{ClipCache, FfmpegRenderer, Renderer};
 
 use crate::jobs::Jobs;
+use crate::throttle::Throttle;
 use crate::Config;
 
 pub struct Inner {
@@ -16,12 +17,16 @@ pub struct Inner {
     pub auth: AuthStore,
     pub corpora: CorpusStore,
     pub limiter: LoginLimiter,
+    /// Per-user `requests_per_minute` on the job-creating endpoints.
+    pub throttle: Throttle,
     /// One-time first-run token; `Some` only while no user exists.
     pub setup_token: Mutex<Option<String>>,
     pub events: broadcast::Sender<Event>,
     pub jobs: Jobs,
     /// Cuts and encodes video; ffmpeg unless a test supplies another.
     pub renderer: Arc<dyn Renderer>,
+    /// The MIDI library and what YTPMV renders are made from.
+    pub ytpmv: crate::ytpmv::Service,
 }
 
 #[derive(Clone)]
@@ -37,8 +42,13 @@ impl Deref for AppState {
 
 impl AppState {
     pub async fn new(config: Config) -> Result<Self> {
-        let ffmpeg = config.ffmpeg.clone().unwrap_or_else(|| "ffmpeg".into());
-        Self::with_renderer(config, Arc::new(FfmpegRenderer::new(ffmpeg))).await
+        let ffmpeg: std::path::PathBuf = config.ffmpeg.clone().unwrap_or_else(|| "ffmpeg".into());
+        let mut renderer = FfmpegRenderer::new(ffmpeg.clone());
+        if config.clip_cache_mb > 0 {
+            let dir = config.data_dir.join("cache").join("clips");
+            renderer = renderer.with_cache(ClipCache::new(dir, config.clip_cache_mb << 20, ffmpeg));
+        }
+        Self::with_renderer(config, Arc::new(renderer)).await
     }
 
     pub async fn with_renderer(config: Config, renderer: Arc<dyn Renderer>) -> Result<Self> {
@@ -52,15 +62,18 @@ impl AppState {
         };
         let (events, _) = broadcast::channel(256);
         let jobs = Jobs::new(&config.data_dir, config.job_workers, events.clone());
+        let ytpmv = crate::ytpmv::Service::new(&config.data_dir, config.ffmpeg.clone().unwrap_or_else(|| "ffmpeg".into()));
         let state = Self(Arc::new(Inner {
             config,
             auth,
             corpora,
             limiter: LoginLimiter::default(),
+            throttle: Throttle::default(),
             setup_token: Mutex::new(setup_token),
             events,
             jobs,
             renderer,
+            ytpmv,
         }));
         crate::jobs::start_workers(&state);
         Ok(state)
@@ -86,6 +99,7 @@ impl AppState {
                     tracing::warn!(error = %e, "session purge failed");
                 }
                 st.limiter.prune();
+                st.throttle.prune();
             }
         });
     }

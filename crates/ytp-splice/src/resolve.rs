@@ -155,6 +155,7 @@ pub fn resolve_text(
     let idle_ok = pause_style == 0;
 
     let own = rt.pool.clone();
+    let _pronunciations = own.scope();
     let full = tokenize_full(text, own.as_ref());
     if full.is_empty() {
         return Ok((Vec::new(), Report::default()));

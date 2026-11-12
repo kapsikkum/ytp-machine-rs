@@ -3,12 +3,14 @@
 //! positions for phrase runs, source quality, idle footage, noises, votes.
 
 use std::collections::HashMap;
+use std::sync::Arc;
 
 use indexmap::IndexMap;
 use serde_json::Value;
 use ytp_corpus::data::{resolve_in, ClipRow, CorpusData, TONE_FEATURES};
 
 use crate::model::{Clip, Tone};
+use crate::recipe;
 
 pub const MIN_DUR: f64 = 0.05;
 pub const IDLE_MIN_GAP: f64 = 0.45;
@@ -40,6 +42,10 @@ pub struct Pool {
     pub titles: HashMap<i64, String>,
     pub settings: HashMap<String, String>,
     pub alignments: HashMap<i64, Vec<(char, f64, f64)>>,
+    /// This corpus's pronunciations.csv (and the shared one), if any rows.
+    pub pron: Option<Arc<ytp_text::UserDict>>,
+    /// Saved splice recipes by word (splice_recipes).
+    pub recipes: HashMap<String, Vec<recipe::Group>>,
 }
 
 fn parse_phones(raw: &Option<String>) -> Option<Vec<(String, f64, f64)>> {
@@ -91,6 +97,12 @@ fn load_tone(data: &CorpusData) -> HashMap<i64, Tone> {
 }
 
 impl Pool {
+    /// Phoneme lookups on this thread use this corpus's pronunciations until
+    /// the guard drops.
+    pub fn scope(&self) -> ytp_text::userdict::Scope {
+        ytp_text::userdict::scope(self.pron.as_ref())
+    }
+
     pub fn splice_mode(&self) -> &str {
         match self.settings.get("splice_mode").map(|s| s.to_lowercase()) {
             Some(m) if m == "loose" => "loose",
@@ -123,6 +135,25 @@ impl Pool {
             boundary_reports: data.boundary_reports.iter().copied().collect(),
             ..Default::default()
         };
+        if data.pronunciations.is_some() || data.shared_pronunciations.is_some() {
+            let dict = ytp_text::UserDict::from_csv(
+                data.shared_pronunciations.as_deref(),
+                data.pronunciations.as_deref(),
+            );
+            for (origin, word, value) in &dict.rejected {
+                tracing::warn!(corpus = %data.name, ?origin, %word, %value, "pronunciations.csv: could not make sense of the value (use ARPAbet, words that sound right, =letters or =skip)");
+            }
+            pool.pron = (!dict.is_empty()).then(|| Arc::new(dict));
+        }
+        let _pronunciations = pool.scope();
+        for (word, json) in &data.recipes {
+            match recipe::parse(json) {
+                Some(groups) => {
+                    pool.recipes.insert(word.clone(), groups);
+                }
+                None => tracing::warn!(corpus = %data.name, %word, "unreadable splice recipe"),
+            }
+        }
         for (id, raw) in &data.alignments {
             if let Ok(Value::Array(a)) = serde_json::from_str::<Value>(raw) {
                 let al: Vec<(char, f64, f64)> = a

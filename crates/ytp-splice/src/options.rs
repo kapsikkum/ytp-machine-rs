@@ -16,15 +16,6 @@ pub struct GenerationOptions {
     pub clean_takes: bool,
     pub phrases: bool,
     pub tone_match: f64,
-    pub sing: bool,
-    pub sing_key: f64,
-    pub sing_shape: f64,
-    pub sing_amount: f64,
-    pub sing_vibrato: f64,
-    pub sing_cute: f64,
-    pub sing_midi: String,
-    pub sing_part: String,
-    pub vocode: bool,
     pub pause_style: f64,
     pub chaos: f64,
     pub seed: String,
@@ -54,6 +45,22 @@ fn as_float(v: &Value) -> Option<f64> {
         Value::String(s) => s.trim().parse().ok(),
         _ => None,
     }
+}
+
+/// Options of the Python app that this build no longer has: singing and the
+/// vocoder, removed pending a rework.
+pub fn is_removed_option(key: &str) -> bool {
+    key == "sing" || key == "vocode" || key.starts_with("sing_")
+}
+
+/// The removed options present in `given` (any value, even `false`), sorted.
+pub fn removed_options(given: &Value) -> Vec<String> {
+    let mut keys: Vec<String> = given
+        .as_object()
+        .map(|o| o.keys().filter(|k| is_removed_option(k)).cloned().collect())
+        .unwrap_or_default();
+    keys.sort();
+    keys
 }
 
 impl GenerationOptions {
@@ -90,15 +97,6 @@ impl GenerationOptions {
             clean_takes: flag("clean_takes", true),
             phrases: flag("phrases", true),
             tone_match: num("tone_match", 0.6, 0.0, 1.0),
-            sing: flag("sing", false),
-            sing_key: num("sing_key", 0.0, 0.0, 11.0),
-            sing_shape: num("sing_shape", 0.0, 0.0, 4.0),
-            sing_amount: num("sing_amount", 1.0, 0.0, 1.0),
-            sing_vibrato: num("sing_vibrato", 0.0, 0.0, 1.0),
-            sing_cute: num("sing_cute", 0.0, 0.0, 1.0),
-            sing_midi: text("sing_midi"),
-            sing_part: text("sing_part"),
-            vocode: flag("vocode", false),
             pause_style: num("pause_style", 0.0, 0.0, 2.0),
             chaos: num("chaos", 0.0, 0.0, 1.0),
             seed: text("seed"),
@@ -110,11 +108,7 @@ impl GenerationOptions {
             "speed": self.speed, "pitch": self.pitch, "word_gap": self.word_gap,
             "sentence_pause": self.sentence_pause, "stretch": self.stretch,
             "clean_takes": self.clean_takes, "phrases": self.phrases,
-            "tone_match": self.tone_match, "sing": self.sing, "sing_key": self.sing_key,
-            "sing_shape": self.sing_shape, "sing_amount": self.sing_amount,
-            "sing_vibrato": self.sing_vibrato, "sing_cute": self.sing_cute,
-            "sing_midi": self.sing_midi, "sing_part": self.sing_part,
-            "vocode": self.vocode, "pause_style": self.pause_style, "chaos": self.chaos,
+            "tone_match": self.tone_match, "pause_style": self.pause_style, "chaos": self.chaos,
             "seed": self.seed,
         })
     }
@@ -136,5 +130,16 @@ mod tests {
         assert!(o.clean_takes);
         assert_eq!(o.seed, "abc.d");
         assert_eq!(o.chaos, 0.5);
+    }
+
+    #[test]
+    fn sing_and_vocode_are_gone() {
+        let given = json!({ "speed": 1.2, "sing": false, "sing_key": 3, "vocode": true });
+        assert_eq!(removed_options(&given), vec!["sing", "sing_key", "vocode"]);
+        assert!(removed_options(&json!({ "speed": 1 })).is_empty());
+        assert!(removed_options(&Value::Null).is_empty());
+        // never echoed back, even if a caller slipped one past the check
+        let o = GenerationOptions::from_json(&given).to_json();
+        assert!(o.as_object().unwrap().keys().all(|k| !is_removed_option(k)));
     }
 }

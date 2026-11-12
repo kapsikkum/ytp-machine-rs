@@ -265,3 +265,139 @@ fn cancelling_from_progress_stops_the_resolve() {
     let r = resolve_text("hi hi hi", &opts, &rt, &mut rng, &|stage, _, _| stage != "resolving");
     assert!(r.is_err());
 }
+
+fn corpus_for_recipes() -> Pool {
+    Pool::from_words(
+        "t",
+        &[],
+        vec![
+            ("cat".into(), vec![clip(1, "cat", 10.0, &[("K", 0.0, 0.1), ("AE", 0.1, 0.3), ("T", 0.3, 0.4)])]),
+            ("top".into(), vec![clip(2, "top", 20.0, &[("T", 0.0, 0.1), ("AA", 0.1, 0.25), ("P", 0.25, 0.4)])]),
+            ("pop".into(), vec![clip(3, "pop", 30.0, &[("P", 0.0, 0.1), ("AA", 0.1, 0.25), ("P", 0.25, 0.4)])]),
+        ],
+    )
+}
+
+fn splice(pool: &Pool, word: &str) -> Option<Vec<ytp_splice::Segment>> {
+    let audio = AudioCache::new(&NoAudio);
+    let cx = SpliceCtx { pool, tone: None, audio: &audio };
+    let mut rng = PyRandom::from_int(5);
+    find_phoneme_splice(&cx, &mut rng, word, &HashMap::new(), "strict", 8)
+}
+
+fn recipes_of(pairs: &[(&str, &str)]) -> Vec<(String, String)> {
+    pairs.iter().map(|(w, r)| (w.to_string(), r.to_string())).collect()
+}
+
+#[test]
+fn a_saved_recipe_picks_the_source_the_search_would_not() {
+    // Both "top" and "pop" end in P; the plain search takes one, the recipe the other.
+    let plain = corpus_for_recipes();
+    let by_search = splice(&plain, "cap").unwrap();
+    assert_eq!(by_search[1].spliced_from.as_deref(), Some("pop"));
+
+    let mut d = data(Vec::new());
+    d.recipes = recipes_of(&[(
+        "cap",
+        r#"[{"phones":["K","AE"],"from":["cat"]},{"phones":["P"],"from":["top"]}]"#,
+    )]);
+    let mut pool = corpus_for_recipes();
+    pool.recipes = Pool::build(&d).recipes; // read the way a corpus load reads it
+    assert_eq!(pool.recipes["cap"].len(), 2);
+    let segs = splice(&pool, "cap").unwrap();
+    assert_eq!(segs.len(), 2);
+    assert_eq!(segs[0].spliced_from.as_deref(), Some("cat"));
+    assert_eq!(segs[1].spliced_from.as_deref(), Some("top"));
+    assert!((segs[1].start_time - 20.25).abs() < 0.03, "{}", segs[1].start_time);
+}
+
+#[test]
+fn a_recipe_that_does_not_spell_the_word_is_ignored() {
+    let mut pool = corpus_for_recipes();
+    d_recipes(&mut pool, r#"[{"phones":["K","AE"],"from":["cat"]},{"phones":["B"],"from":["top"]}]"#);
+    // K AE B is not K AE P: the search runs as if there were no recipe
+    let segs = splice(&pool, "cap").unwrap();
+    assert_eq!(segs[1].spliced_from.as_deref(), Some("pop"));
+}
+
+fn d_recipes(pool: &mut Pool, json: &str) {
+    let mut d = data(Vec::new());
+    d.recipes = recipes_of(&[("cap", json)]);
+    pool.recipes = Pool::build(&d).recipes;
+}
+
+#[test]
+fn a_hand_cut_piece_is_played_exactly() {
+    let mut pool = corpus_for_recipes();
+    d_recipes(
+        &mut pool,
+        r#"[{"phones":["K","AE"],"from":["cat"]},
+            {"phones":["P"],"from":["top"],"clip_id":2,"start":20.30,"end":20.38}]"#,
+    );
+    let segs = splice(&pool, "cap").unwrap();
+    assert_eq!(segs[1].spliced_from.as_deref(), Some("top"));
+    assert_eq!((segs[1].start_time, segs[1].end_time), (20.30, 20.38));
+    assert!(segs[1].edited && segs[1].cut && segs[1].subword);
+    assert_eq!(segs[1].src_start, Some(20.0));
+    assert!(!segs[0].edited);
+
+    // times outside the clip, or a clip that is not that word's: cut by the usual rules
+    d_recipes(
+        &mut pool,
+        r#"[{"phones":["K","AE"],"from":["cat"]},
+            {"phones":["P"],"from":["top"],"clip_id":2,"start":25.0,"end":25.2}]"#,
+    );
+    let segs = splice(&pool, "cap").unwrap();
+    assert!(!segs[1].edited);
+    assert!((segs[1].start_time - 20.25).abs() < 1e-9);
+    d_recipes(
+        &mut pool,
+        r#"[{"phones":["K","AE"],"from":["cat"]},
+            {"phones":["P"],"from":["top"],"clip_id":99,"start":20.30,"end":20.38}]"#,
+    );
+    assert!(!splice(&pool, "cap").unwrap()[1].edited);
+}
+
+#[test]
+fn a_corpus_pronunciation_changes_what_its_clips_are_believed_to_contain() {
+    // CMU says "tomato" is T AH M EY T OW, so "mate" (M EY T) can be cut out
+    // of it. This speaker says tom-AH-to: the same cut would give "mart".
+    let tomato = clip(
+        1,
+        "tomato",
+        10.0,
+        &[("T", 0.0, 0.1), ("AH", 0.1, 0.15), ("M", 0.15, 0.25), ("EY", 0.25, 0.4), ("T", 0.4, 0.5), ("OW", 0.5, 0.7)],
+    );
+    let pool = Pool::from_words("t", &[], vec![("tomato".into(), vec![tomato.clone()])]);
+    let by_cmu = splice(&pool, "mate").expect("CMU's tomato holds M EY T");
+    assert_eq!(by_cmu[0].spliced_from.as_deref(), Some("tomato"));
+
+    let mut d = data(Vec::new());
+    d.pronunciations = Some("tomato,T AH M AA T OW\n".into());
+    let mut rosen = Pool::from_words("t", &[], vec![("tomato".into(), vec![tomato])]);
+    rosen.pron = Pool::build(&d).pron;
+    assert!(rosen.pron.is_some());
+    assert!(splice(&rosen, "mate").is_none(), "no EY left to cut");
+    // and the global dictionary is untouched afterwards
+    assert!(splice(&pool, "mate").is_some());
+}
+
+#[test]
+fn the_target_word_uses_the_corpus_pronunciation_too() {
+    let pool0 = Pool::from_words(
+        "t",
+        &[],
+        vec![
+            ("cat".into(), vec![clip(1, "cat", 10.0, &[("K", 0.0, 0.1), ("AE", 0.1, 0.3), ("T", 0.3, 0.4)])]),
+            ("top".into(), vec![clip(2, "top", 20.0, &[("T", 0.0, 0.1), ("AA", 0.1, 0.25), ("P", 0.25, 0.4)])]),
+        ],
+    );
+    // "cap" is K AE P; this corpus insists on "cat" -> K AE T, a word it already has
+    let mut d = data(Vec::new());
+    d.pronunciations = Some("cap,K AE T\n".into());
+    let mut pool = pool0;
+    pool.pron = Pool::build(&d).pron;
+    let segs = splice(&pool, "cap").unwrap();
+    assert_eq!(segs.len(), 1);
+    assert_eq!(segs[0].unit.as_ref().unwrap().phones, vec!["K", "AE", "T"]);
+}

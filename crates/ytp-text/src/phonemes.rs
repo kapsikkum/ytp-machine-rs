@@ -2,14 +2,15 @@
 //! compound splitting and a spelling-based guess. Ported from `app/phonemes.py`
 //! (the splice planner built on top of it lives in `ytp-splice`).
 //!
-//! The per-corpus `pronunciations.csv` of the Python app is not read.
+//! Per-corpus `pronunciations.csv` overrides apply while a
+//! [`crate::userdict::Scope`] is active on the thread.
 
 use std::collections::{HashMap, HashSet};
 use std::sync::{Mutex, OnceLock};
 
 use regex::Regex;
 
-use crate::{clen, cmudict, cslice, num2words};
+use crate::{clen, cmudict, cslice, num2words, userdict};
 
 pub type Phones = Vec<String>;
 
@@ -109,7 +110,7 @@ fn base_phones(b: &str) -> Option<Phones> {
     dict(b)
 }
 
-fn letters_to_phones(letters: &str) -> Option<Phones> {
+pub(crate) fn letters_to_phones(letters: &str) -> Option<Phones> {
     let t = tables();
     let mut out = Vec::new();
     for ch in letters.chars() {
@@ -289,9 +290,24 @@ fn ordinal_digits(w: &str) -> Option<&str> {
     None
 }
 
-/// Phonemes from the override table or CMU, with spelling variants and the
-/// special tables as fallbacks.
+/// The corpus dictionary first (an explicit `=skip` ends the lookup), then
+/// the override table or CMU with spelling variants and the special tables.
 fn direct(w: &str) -> Option<Phones> {
+    match userdict::active().as_deref().and_then(|d| d.get(w)) {
+        Some(found) => found.clone().filter(|p| !p.is_empty()),
+        None => direct_base(w),
+    }
+}
+
+/// [`direct`] against a dictionary still being read (words defined above).
+pub(crate) fn direct_with(w: &str, user: &HashMap<String, Option<Phones>>) -> Option<Phones> {
+    match user.get(w) {
+        Some(found) => found.clone().filter(|p| !p.is_empty()),
+        None => direct_base(w),
+    }
+}
+
+fn direct_base(w: &str) -> Option<Phones> {
     let t = tables();
     if let Some(p) = t.overrides.get(w) {
         return Some(p.clone());
@@ -529,6 +545,14 @@ fn compute(word: &str) -> Option<Phones> {
 
 /// ARPAbet phonemes (no stress digits) for `word`, or `None`.
 pub fn word_to_phonemes(word: &str) -> Option<Phones> {
+    if let Some(dict) = userdict::active() {
+        if let Some(hit) = dict.memo.lock().unwrap().get(word) {
+            return hit.clone();
+        }
+        let got = compute(word);
+        dict.memo.lock().unwrap().insert(word.to_string(), got.clone());
+        return got;
+    }
     static CACHE: OnceLock<Mutex<HashMap<String, Option<Phones>>>> = OnceLock::new();
     let cache = CACHE.get_or_init(|| Mutex::new(HashMap::new()));
     if let Some(hit) = cache.lock().unwrap().get(word) {

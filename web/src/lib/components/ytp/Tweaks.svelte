@@ -3,7 +3,6 @@
 
   let { opts = $bindable(), open }: { opts: Options; open: boolean } = $props();
 
-  const tuned = $derived(!!opts.sing || !!opts.vocode);
   const num = (k: string) => Number(opts[k]);
   const pct = (min: number, max: number, v: number) => `${((v - min) / (max - min)) * 100}%`;
 </script>
@@ -32,7 +31,7 @@
         {/each}
       </div>
       <div class="sliders">
-        {#each SLIDERS.filter((o) => !o.sing) as o (o.key)}{@render slider(o)}{/each}
+        {#each SLIDERS as o (o.key)}{@render slider(o)}{/each}
       </div>
       <div class="toggles">
         {#each TOGGLES as o (o.key)}
@@ -42,21 +41,6 @@
           </label>
         {/each}
       </div>
-      {#if tuned}
-        <div class="sing-panel">
-          <div class="section-label" style="margin:0">the tune</div>
-          <div class="sliders">
-            {#each SLIDERS.filter((o) => o.sing) as o (o.key)}{@render slider(o)}{/each}
-          </div>
-          <div class="sing-midi">
-            <label title="Sing to the top line of a MIDI file instead of a tune shape, one note a word">tune from a MIDI
-              <input type="file" accept=".mid,.midi,audio/midi" disabled />
-            </label>
-            <span class="hint">not available yet</span>
-          </div>
-          <div class="hint"><b>Click a word chip</b> to move that word up or down from the tune.</div>
-        </div>
-      {/if}
       <div class="voice-settings">
         <span>for this voice</span>
         <label title="How hard to try for a word the voice never said">effort
@@ -91,8 +75,6 @@
   .slider output { color: var(--text); font-size: .75rem; font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .slider input { grid-column: 1 / -1; }
   .toggles { display: flex; flex-wrap: wrap; gap: .6rem 1.4rem; }
-  .sing-panel { border-top: 1px dashed var(--line); padding-top: .9rem; display: flex; flex-direction: column; gap: .9rem; }
-  .sing-midi { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem .8rem; color: var(--muted); font-size: .75rem; }
   .voice-settings {
     display: flex; flex-wrap: wrap; align-items: center; gap: .5rem .9rem;
     border-top: 1px dashed var(--line); padding-top: .9rem; color: var(--dim); font-size: .72rem;

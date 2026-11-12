@@ -74,7 +74,14 @@ fn splice_plans_match_python() {
     let pool = Arc::new(pool_from(&g));
     let given = serde_json::json!({ "phrases": false });
     let opts = GenerationOptions::from_json(&given);
-    assert_eq!(opts.to_json(), g["options"], "options");
+    // The fixture is the Python app's, which still has sing/vocode options;
+    // those were removed here pending a rework, so compare the rest.
+    let mut expected = g["options"].clone();
+    expected
+        .as_object_mut()
+        .unwrap()
+        .retain(|k, _| !ytp_splice::options::is_removed_option(k));
+    assert_eq!(opts.to_json(), expected, "options");
 
     let no_voices = |_: &str| None;
     let audio = AudioCache::new(&NoAudio);

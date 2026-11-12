@@ -9,6 +9,7 @@ publish.workspace = true
 ytp-splice = { path = "../ytp-splice" }
 ytp-text = { path = "../ytp-text" }
 serde_json = { workspace = true }
+sha2 = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }
 

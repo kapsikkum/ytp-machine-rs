@@ -10,8 +10,9 @@ queue, and `POST /api/ytp/generate` with the `/ytp` page working end to end.
 YTPMV and projects still answer 501. API contract: [`docs/api.md`](docs/api.md).
 
 Rendering needs `ffmpeg` on `PATH` (tested with 8.0.1), or `--ffmpeg <path>`.
-Not ported yet: singing/vocoder, forced alignment (cuts use the corpus's stored phones),
-per-corpus `pronunciations.csv`, the ffmpeg clip cache.
+Not ported yet: forced alignment (cuts use the corpus's stored phones). Singing and the
+vocoder were removed pending a rework (requests that ask for them get a 422).
+Per-corpus `pronunciations.csv`, saved splice recipes and a clip cache are in.
 
 ## Layout
 

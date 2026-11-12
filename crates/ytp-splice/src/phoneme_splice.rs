@@ -17,6 +17,7 @@ use crate::audio::{rms_windows, snap_to_zero_crossing, AudioCache, SR};
 use crate::model::{Segment, Unit};
 use crate::pool::Pool;
 use crate::prosody::ToneCtx;
+use crate::recipe::{self, Group};
 use crate::rng::PyRandom;
 use crate::select::pick_clip;
 
@@ -93,6 +94,8 @@ enum Flag {
     Half,
     Verbatim,
     Slice(f64, f64),
+    /// Cut by hand: exactly these times of the clip.
+    Span(f64, f64),
 }
 
 #[derive(Clone, Debug)]
@@ -251,15 +254,40 @@ fn phrase_clips(pool: &Pool, words: &[&str]) -> Vec<usize> {
 fn chosen_from_recipe(
     cx: &SpliceCtx,
     rng: &mut PyRandom,
-    recipe: &[(Vec<String>, Vec<String>)],
+    recipe: &[Group],
     index: &Index,
     penalty: &Penalty,
 ) -> Option<Vec<Chosen>> {
     let mut chosen = Vec::new();
     let mut t = 0;
-    for (group, preferred) in recipe {
+    for Group { phones: group, from: preferred, cut } in recipe {
         let mut unit: Option<Chosen> = None;
-        for pref in preferred {
+        if let (Some(cut), Some(first)) = (cut, preferred.first()) {
+            // That clip, those times, but only while the clip is still what it
+            // was: the right word, and the times inside it.
+            for e in index.get(&group[0]).into_iter().flatten() {
+                if e.word != first || e.phones.get(e.pos..e.pos + group.len()) != Some(group.as_slice()) {
+                    continue;
+                }
+                let found = e.clips.iter().copied().find(|&c| cx.pool.clips[c].id == Some(cut.clip_id));
+                if let Some(clip) = found {
+                    let c = &cx.pool.clips[clip];
+                    if c.start_time - 0.001 <= cut.start && cut.start < cut.end && cut.end <= c.end_time + 0.001 {
+                        unit = Some(Chosen {
+                            tstart: t,
+                            matched: group.len(),
+                            word: e.word.to_string(),
+                            clip,
+                            pos: e.pos,
+                            total: e.phones.len(),
+                            flag: Some(Flag::Span(cut.start, cut.end)),
+                        });
+                    }
+                }
+                break;
+            }
+        }
+        for pref in if unit.is_some() { &[][..] } else { preferred.as_slice() } {
             if pref.contains(' ') {
                 let words: Vec<&str> = pref.split(' ').collect();
                 let w = words[words.len() - 1];
@@ -354,6 +382,7 @@ pub fn find_phoneme_splice(
     mode: &str,
     max_units: usize,
 ) -> Option<Vec<Segment>> {
+    let _pronunciations = cx.pool.scope();
     let mut raw = word_to_phonemes(target_word);
     if raw.is_none() && mode != "strict" {
         raw = guess_phonemes(target_word);
@@ -383,10 +412,14 @@ pub fn find_phoneme_splice(
         }
     }
 
-    if let Some(recipe) = tables().recipes.get(&target_word.to_lowercase()) {
-        let flat: Vec<&String> = recipe.iter().flat_map(|(g, _)| g.iter()).collect();
+    // A recipe saved for this corpus wins over the built-in one.
+    let key = target_word.to_lowercase();
+    let saved = cx.pool.recipes.get(&key).filter(|r| !r.is_empty());
+    let builtin = || tables().recipes.get(&key).map(|r| recipe::from_pairs(r));
+    if let Some(recipe) = saved.cloned().or_else(builtin) {
+        let flat: Vec<&String> = recipe.iter().flat_map(|g| g.phones.iter()).collect();
         if flat.len() == target.len() && flat.iter().zip(&target).all(|(a, b)| *a == b) {
-            if let Some(chosen) = chosen_from_recipe(cx, rng, recipe, &index, penalty) {
+            if let Some(chosen) = chosen_from_recipe(cx, rng, &recipe, &index, penalty) {
                 return realise(cx, rng, &chosen, &target, &index, penalty, max_units);
             }
         }
@@ -644,6 +677,23 @@ fn realise(
                 break;
             }
             segments.push(seg?);
+            continue;
+        }
+
+        if let Some(Flag::Span(start, end)) = u.flag {
+            // Times set by hand against the waveform: taken exactly, and
+            // marked edited so the encoder pads nothing.
+            let mut s = Segment::from_clip(cclip);
+            s.start_time = start;
+            s.end_time = end;
+            s.src_start = Some(cclip.start_time);
+            s.src_end = Some(cclip.end_time);
+            s.subword = true;
+            s.cut = true;
+            s.edited = true;
+            s.spliced_from = Some(u.word.clone());
+            s.matched = Some(u.matched);
+            segments.push(s);
             continue;
         }
 

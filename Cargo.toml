@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/ytp-core", "crates/ytp-auth", "crates/ytp-corpus", "crates/ytp-server", "crates/ytp-text", "crates/ytp-splice", "crates/ytp-media", "crates/ytp-music"]
+members = ["crates/ytp-core", "crates/ytp-auth", "crates/ytp-corpus", "crates/ytp-server", "crates/ytp-text", "crates/ytp-splice", "crates/ytp-media", "crates/ytp-music", "crates/ytp-ytpmv"]
 
 [workspace.package]
 version = "0.1.0"

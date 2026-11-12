@@ -50,6 +50,9 @@ struct ServeArgs {
     /// Always mark the session cookie Secure.
     #[arg(long, env = "YTP_SECURE_COOKIES")]
     secure_cookies: bool,
+    /// Size cap of the cut-clip cache in MB (0 turns it off).
+    #[arg(long, env = "YTP_CLIP_CACHE_MB", default_value_t = 500)]
+    clip_cache_mb: u64,
 }
 
 #[derive(Subcommand)]
@@ -111,6 +114,7 @@ async fn serve(data_dir: PathBuf, a: ServeArgs) -> anyhow::Result<()> {
         allowed_origins: a.allowed_origins,
         trust_proxy: a.trust_proxy,
         secure_cookies: a.secure_cookies,
+        clip_cache_mb: a.clip_cache_mb,
     };
     let state = AppState::new(config.clone())
         .await

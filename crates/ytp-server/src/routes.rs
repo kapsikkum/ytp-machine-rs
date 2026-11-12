@@ -10,7 +10,7 @@ use axum::routing::{on, MethodFilter, MethodRouter};
 use axum::Router;
 use ytp_auth::Permission::{self, *};
 
-use crate::handlers::{admin, auth, corpora, jobs, misc, tokens};
+use crate::handlers::{admin, auth, corpora, jobs, misc, tokens, ytpmv};
 use crate::{ws, AppState};
 
 /// Who may call a route.
@@ -227,11 +227,26 @@ pub fn api(state: &AppState) -> (Router<AppState>, Vec<RouteSpec>) {
         .get("/api/jobs/{id}", Authenticated, jobs::get)
         .delete("/api/jobs/{id}", Authenticated, jobs::cancel)
         .get("/api/jobs/{id}/result", Authenticated, jobs::result)
-        .any(
-            "/api/ytpmv/{*rest}",
+        // ytpmv: a MIDI library per user, previews that answer with audio,
+        // and a render queued like a sentence (which also needs export.render,
+        // checked in the handler)
+        .post_large(
+            "/api/ytpmv/midi",
             Perm(GenerateYtpmv),
-            misc::not_implemented,
+            ytpmv::upload,
+            crate::ytpmv::MAX_MIDI_BYTES + (64 << 10),
         )
+        .get("/api/ytpmv/library", Perm(GenerateYtpmv), ytpmv::library)
+        .get("/api/ytpmv/midi/{id}", Perm(GenerateYtpmv), ytpmv::get_midi)
+        .patch("/api/ytpmv/midi/{id}", Perm(GenerateYtpmv), ytpmv::rename)
+        .delete("/api/ytpmv/midi/{id}", Perm(GenerateYtpmv), ytpmv::delete)
+        .get("/api/ytpmv/midi/{id}/notes", Perm(GenerateYtpmv), ytpmv::notes)
+        .get("/api/ytpmv/midi/{id}/part/{part}", Perm(GenerateYtpmv), ytpmv::part_voice)
+        .post("/api/ytpmv/sample", Perm(GenerateYtpmv), ytpmv::sample)
+        .post("/api/ytpmv/sample/audio", Perm(GenerateYtpmv), ytpmv::sample_audio)
+        .post("/api/ytpmv/preview", Perm(GenerateYtpmv), ytpmv::preview)
+        .post("/api/ytpmv/preview-mix", Perm(GenerateYtpmv), ytpmv::preview_mix)
+        .post("/api/ytpmv/render", Perm(GenerateYtpmv), ytpmv::render)
         .any(
             "/api/projects",
             ReadWrite {

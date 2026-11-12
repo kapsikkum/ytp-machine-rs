@@ -51,7 +51,16 @@ pub struct CorpusData {
     pub tone: Vec<ToneRow>,
     /// Raw JSON `[[char, start, end], ...]` per clip id.
     pub alignments: HashMap<i64, String>,
+    /// `(word, recipe JSON)` from `splice_recipes`.
+    pub recipes: Vec<(String, String)>,
+    /// Text of `<data>/pronunciations.csv` (every corpus).
+    pub shared_pronunciations: Option<String>,
+    /// Text of the corpus's own `pronunciations.csv`.
+    pub pronunciations: Option<String>,
 }
+
+/// What a built pool depends on: the database and both pronunciation files.
+pub type Version = [Option<std::time::SystemTime>; 3];
 
 pub const TONE_FEATURES: [&str; 7] = [
     "pitch",
@@ -132,7 +141,27 @@ async fn columns(conn: &mut SqliteConnection, table: &str) -> Vec<String> {
         .unwrap_or_default()
 }
 
+pub const PRONUNCIATIONS: &str = "pronunciations.csv";
+
 impl CorpusStore {
+    fn shared_pronunciations_path(&self) -> Option<PathBuf> {
+        self.root().parent().map(|p| p.join(PRONUNCIATIONS))
+    }
+
+    /// Modification times of everything corpus `name` is built from; a pool
+    /// built for one version is stale once this changes.
+    pub fn version(&self, name: &str) -> Option<Version> {
+        crate::validate_name(name).ok()?;
+        let dir = self.dir(name);
+        let mtime = |p: &Path| std::fs::metadata(p).and_then(|m| m.modified()).ok();
+        let db = mtime(&dir.join(DB_NAME))?;
+        Some([
+            Some(db),
+            mtime(&dir.join(PRONUNCIATIONS)),
+            self.shared_pronunciations_path().and_then(|p| mtime(&p)),
+        ])
+    }
+
     /// Read corpus `name` into memory.
     pub async fn load(&self, name: &str) -> Result<CorpusData> {
         crate::validate_name(name).map_err(|_| ytp_core::Error::not_found("no such corpus"))?;
@@ -142,11 +171,18 @@ impl CorpusStore {
             return Err(ytp_core::Error::not_found("no such corpus"));
         }
         let mut conn = open_ro(&db).await?;
-        let data = read_all(&mut conn, name, dir).await;
+        let mut data = read_all(&mut conn, name, dir.clone()).await;
         use sqlx::Connection;
         let _ = conn.close().await;
+        data.pronunciations = read_text(&dir.join(PRONUNCIATIONS));
+        data.shared_pronunciations = self.shared_pronunciations_path().and_then(|p| read_text(&p));
         Ok(data)
     }
+}
+
+fn read_text(path: &Path) -> Option<String> {
+    let bytes = std::fs::read(path).ok()?;
+    Some(String::from_utf8_lossy(&bytes).into_owned())
 }
 
 async fn read_all(conn: &mut SqliteConnection, name: &str, dir: PathBuf) -> CorpusData {
@@ -218,6 +254,13 @@ async fn read_all(conn: &mut SqliteConnection, name: &str, dir: PathBuf) -> Corp
         .iter()
         .filter_map(|r| Some((r.try_get::<i64, _>(0).ok()?, r.try_get::<String, _>(1).ok()?)))
         .collect();
+    let recipes = sqlx::query("SELECT word, recipe FROM splice_recipes")
+        .fetch_all(&mut *conn)
+        .await
+        .unwrap_or_default()
+        .iter()
+        .filter_map(|r| Some((r.try_get::<String, _>(0).ok()?, r.try_get::<String, _>(1).ok()?)))
+        .collect();
 
     CorpusData {
         name: name.to_string(),
@@ -230,6 +273,8 @@ async fn read_all(conn: &mut SqliteConnection, name: &str, dir: PathBuf) -> Corp
         settings,
         tone,
         alignments,
+        recipes,
+        ..Default::default()
     }
 }
 

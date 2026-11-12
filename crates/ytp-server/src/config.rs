@@ -16,6 +16,9 @@ pub struct Config {
     /// Always mark the session cookie `Secure` (it is also set whenever the
     /// request arrived with `X-Forwarded-Proto: https`).
     pub secure_cookies: bool,
+    /// Size cap of the cut-clip cache under `<data-dir>/cache/clips`, in MB
+    /// (0 turns it off).
+    pub clip_cache_mb: u64,
 }
 
 impl Config {
@@ -28,6 +31,7 @@ impl Config {
             allowed_origins: Vec::new(),
             trust_proxy: false,
             secure_cookies: false,
+            clip_cache_mb: 500,
         }
     }
 }

@@ -1,0 +1,18 @@
+[package]
+name = "ytp-ytpmv"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "YTPMV orchestration: corpus words as instruments, song rendering, recommendations and the video grid (port of app/ytpmv/{samples,render,recommend,screen,scope}.py)."
+
+[dependencies]
+ytp-music = { path = "../ytp-music" }
+ytp-splice = { path = "../ytp-splice" }
+ytp-corpus = { path = "../ytp-corpus" }
+ytp-media = { path = "../ytp-media" }
+serde_json = { workspace = true }
+sha2 = { workspace = true }
+tracing = { workspace = true }
+
+[dev-dependencies]

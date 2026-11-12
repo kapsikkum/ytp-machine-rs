@@ -12,6 +12,8 @@
     dim: boolean;
     labels: boolean;
     draft: boolean;
+    /** no voice: every part is played by a chip, and no corpus is needed */
+    synth: boolean;
   }
 </script>
 
@@ -56,6 +58,7 @@
       </label>
       <label title="Measure how loud each part actually came out and move it to where its job wants it, rather than trusting a fixed table that cannot tell a whisper from a brass patch. Then set the level of the finished mix."><input type="checkbox" bind:checked={o.balance} /> auto balance</label>
       <label title="Only as many notes at once as the chip really had channels for. When a song asks for more, a new note takes a channel over and cuts off what was on it, as the drivers did."><input type="checkbox" bind:checked={o.accurate} /> accurate channels</label>
+      <label title="Leave the voice out: every part is played by the chip, and each tile shows its oscilloscope. Needs no corpus."><input type="checkbox" bind:checked={o.synth} /> chip only (no voice)</label>
       <label title="A hair of level on every hit, and a hair of tuning on drums, so a part sounds played rather than triggered"><input type="checkbox" bind:checked={o.jitter} /> jitter</label>
     </div>
     <div class="group"><span class="gl">picture</span>
@@ -63,7 +66,7 @@
       <label title="A flash of brightness on every hit"><input type="checkbox" bind:checked={o.flash} /> flash</label>
       <label title="Darken a tile when its part is not playing"><input type="checkbox" bind:checked={o.dim} /> dim idle</label>
       <label title="Write each part's word on its tile, or what plays it when there is no voice"><input type="checkbox" bind:checked={o.labels} /> labels</label>
-      <label title="Draft preview renders at half resolution for faster generation"><input type="checkbox" bind:checked={o.draft} /> draft preview</label>
+      <label title="Lower-resolution tiles, so the render is quicker"><input type="checkbox" bind:checked={o.draft} /> draft</label>
     </div>
   </div>
   <details class="bulk">

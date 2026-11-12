@@ -12,6 +12,7 @@ pub mod options;
 pub mod phoneme_splice;
 pub mod pool;
 pub mod prosody;
+pub mod recipe;
 pub mod resolve;
 pub mod rng;
 pub mod select;
@@ -20,7 +21,7 @@ pub mod window;
 
 pub use audio::{AudioCache, AudioProbe, NoAudio};
 pub use model::{Clip, Report, Segment, TokenReport};
-pub use options::GenerationOptions;
+pub use options::{removed_options, GenerationOptions};
 pub use pool::Pool;
 pub use resolve::{resolve_text, Cancelled, Progress, Runtime};
 pub use rng::PyRandom;

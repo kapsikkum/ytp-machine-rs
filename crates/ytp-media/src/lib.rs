@@ -5,6 +5,7 @@
 //! `app/generate.py`), and an in-process renderer can replace it later
 //! without touching the callers.
 
+pub mod cache;
 pub mod glitch;
 pub mod graph;
 pub mod proc;
@@ -16,6 +17,7 @@ use std::time::Duration;
 
 use ytp_splice::{AudioCache, AudioProbe, GenerationOptions, Segment};
 
+pub use crate::cache::ClipCache;
 use crate::graph::{plan_chunk, FPS};
 use crate::proc::{run, trim_stderr, RunError};
 use crate::tools::Tools;
@@ -60,12 +62,16 @@ pub trait Renderer: Send + Sync {
     fn audio(&self) -> &dyn AudioProbe;
     /// Is the renderer usable? The reason when it is not, else a description.
     fn check(&self) -> Result<String, String>;
+    /// Wait for background work such as filling the clip cache (tests and
+    /// benchmarks).
+    fn wait_idle(&self, _timeout: Duration) {}
 }
 
 pub struct FfmpegRenderer {
     tools: Tools,
     /// `-/filter_complex` (ffmpeg 7+) works; otherwise `-filter_complex_script`.
     new_script_flag: AtomicBool,
+    cache: Option<ClipCache>,
 }
 
 impl FfmpegRenderer {
@@ -73,7 +79,18 @@ impl FfmpegRenderer {
         Self {
             tools: Tools::new(ffmpeg),
             new_script_flag: AtomicBool::new(true),
+            cache: None,
         }
+    }
+
+    /// Read segments from cut clips kept in cache where there are any.
+    pub fn with_cache(mut self, cache: ClipCache) -> Self {
+        self.cache = Some(cache);
+        self
+    }
+
+    pub fn cache(&self) -> Option<&ClipCache> {
+        self.cache.as_ref()
     }
 
     pub fn tools(&self) -> &Tools {
@@ -122,12 +139,22 @@ impl FfmpegRenderer {
         std::fs::write(&script, &plan.graph)
             .map_err(|e| RenderError::Failed(format!("cannot write the filter graph: {e}")))?;
 
+        // A window already cut is read whole from its small file.
+        let cuts: Vec<Option<PathBuf>> = plan
+            .inputs
+            .iter()
+            .map(|i| self.cache.as_ref().and_then(|c| c.lookup(&i.path, i.start, i.read)))
+            .collect();
         let build = |flag: &str| -> Vec<String> {
             let mut a: Vec<String> = ["-y", "-hide_banner", "-loglevel", "error"]
                 .iter()
                 .map(|s| s.to_string())
                 .collect();
-            for i in &plan.inputs {
+            for (i, cut) in plan.inputs.iter().zip(&cuts) {
+                if let Some(cut) = cut {
+                    a.extend(["-i".into(), cut.display().to_string()]);
+                    continue;
+                }
                 a.extend([
                     "-ss".into(),
                     format!("{:.4}", i.start),
@@ -274,12 +301,23 @@ impl Renderer for FfmpegRenderer {
     fn check(&self) -> Result<String, String> {
         self.tools.version()
     }
+
+    fn wait_idle(&self, timeout: Duration) {
+        if let Some(c) = &self.cache {
+            c.wait_idle(timeout);
+        }
+    }
 }
 
 impl AudioProbe for FfmpegRenderer {
     /// Mono 16 kHz samples decoded through 16-bit PCM, as the Python app
     /// measures them (levels were tuned on that).
     fn decode(&self, source: &str, start: f64, duration: f64) -> Option<Vec<f32>> {
+        // The same window is measured again whenever a sentence is repeated.
+        let (start, duration) = (start.max(0.0), duration);
+        if let Some(hit) = self.cache.as_ref().and_then(|c| c.audio(source, start, duration)) {
+            return Some(hit);
+        }
         let mut cmd = std::process::Command::new(&self.tools.ffmpeg);
         cmd.args(["-v", "error", "-nostdin", "-threads", "2", "-filter_threads", "2"]);
         cmd.args(["-ss", &format!("{:.4}", start.max(0.0)), "-t", &format!("{duration:.4}")]);
@@ -289,6 +327,9 @@ impl AudioProbe for FfmpegRenderer {
             return None;
         }
         let raw = &out.stdout[..out.stdout.len() / 2 * 2];
+        if let Some(c) = &self.cache {
+            c.put_audio(source, start, duration, raw);
+        }
         Some(
             raw.as_chunks::<2>()
                 .0

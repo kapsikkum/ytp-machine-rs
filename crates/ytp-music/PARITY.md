@@ -54,21 +54,22 @@ behaviour rather than just the maths:
   are 1e-6 absolute; the PSOLA and tape renders
   agree to 1e-6 on peak/RMS/DC, and the re-detected pitch of the rendered audio
   to 1e-6.
-* The `music` fixture (`song.mid`) is generated with mido and read by midly;
+* The `music` fixture (`song.mid`) is generated with mido and read by `midiread`;
   note times compare at 1e-12.
 
 ## What is not ported
 
 * `pitch.decode_audio` / `loudness(path, ...)` (ffmpeg process wrappers). The
   crate takes sample slices; decoding belongs to `ytp-media`.
-* `music._repair` / `_unoverflow` (the channel-overflowed-status-byte repair
-  for one buggy MIDI writer) and mido's clamping of data bytes > 127: midly
-  masks them instead. A file midly refuses is salvaged track by track (like
-  `_salvage`), but such files are not repaired.
+* (Now ported) `music._repair` / `_unoverflow` and mido's clamping of data
+  bytes > 127: the MIDI reader is `midiread.rs` (mido's rules, not midly, which
+  is no longer a dependency); tests in `tests/midi_overflow.rs`. `_salvage` is
+  ported with it.
 * `tone.SynthCache`, `nes._DPCM_CACHE`, `Voice._cache` (memoisation only;
   callers can cache on their side), `tone.catalogue()` (JSON for the web page).
 * `samples.py`, `render.py`, `recommend.py`, `screen.py`, `scope.py`: they are
-  corpus / video / database orchestration, not synthesis. The pure helpers that
+  corpus / video / database orchestration, not synthesis, and live in the
+  `ytp-ytpmv` crate. The pure helpers that
   `render.py` uses for routing are in `routing.rs` (`which_chip`, `chip_tone`,
   `bass_line`, `floor_hz`, `octaves_to_fit`).
 * `dsp.py` is ported and unit-exercised through the mastering path (K-weighting)

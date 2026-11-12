@@ -1,22 +1,20 @@
 //! Read a MIDI file and say, in plain words, what the song is doing
-//! (port of the note/part extraction in `app/ytpmv/music.py`, on `midly`).
+//! (port of the note/part extraction in `app/ytpmv/music.py`).
 //!
 //! A YTPMV needs to know what each part *is* before it can pick a word for
 //! it: General MIDI says most of that outright (program numbers, channel 10
 //! for drums); the rest — which part is the tune, what key it is in — is read
 //! from the notes themselves. Nothing here touches audio.
 //!
-//! Not ported: the repair pass for tracks whose status bytes were
-//! channel-overflowed by a buggy writer (`_repair`/`_unoverflow`), and mido's
-//! clamping of data bytes above 127 (midly masks them instead). A track that
-//! midly refuses is dropped and the rest of the file is still read, as
-//! `_salvage` does.
+//! The file is read by `midiread` (mido's rules, including the repair of
+//! tracks whose status bytes were channel-overflowed by a buggy writer and
+//! the clamping of data bytes above 127); a track that cannot be read is
+//! dropped and the rest of the file is still used, as `_salvage` does.
 
 use std::collections::HashMap;
 use std::fmt;
 
-use midly::{MetaMessage, MidiMessage, Smf, Timing, TrackEventKind};
-
+use crate::midiread::{self, Ev, TrackData};
 use crate::pitch::note_name;
 
 pub const DRUM_CHANNEL: u8 = 9;
@@ -543,117 +541,17 @@ fn assign_roles(parts: &mut [Part]) {
 
 // ── Reading the file ─────────────────────────────────────────────────────────
 
-#[derive(Clone, Copy, Debug)]
-enum Ev {
-    Tempo(i64),
-    TimeSig(u32, u32),
-    Program(u8, u8),
-    Pan(u8, u8),
-    NoteOn(u8, u8, u8),
-    NoteOff(u8, u8),
-    /// any other non-meta message; only moves the song's end tick
-    Other,
-    /// a meta event that matters nowhere else: time passes, nothing happens
-    Meta,
-}
-
-struct TrackData {
-    events: Vec<(i64, Ev)>,
-    name: Option<String>,
-}
-
-fn latin1(bytes: &[u8]) -> String {
-    bytes.iter().map(|b| *b as char).collect()
-}
-
-fn convert_track(track: &[midly::TrackEvent]) -> TrackData {
-    let mut events = Vec::with_capacity(track.len());
-    let mut name = None;
-    for ev in track {
-        let delta = ev.delta.as_int() as i64;
-        let e = match ev.kind {
-            TrackEventKind::Meta(MetaMessage::Tempo(t)) => Some(Ev::Tempo(t.as_int() as i64)),
-            TrackEventKind::Meta(MetaMessage::TimeSignature(n, d, _, _)) => {
-                Some(Ev::TimeSig(n as u32, 1u32.checked_shl(d as u32).unwrap_or(0)))
-            }
-            TrackEventKind::Meta(MetaMessage::TrackName(b)) => {
-                let s = latin1(b).trim().to_string();
-                if !s.is_empty() {
-                    name = Some(s);
-                }
-                None
-            }
-            TrackEventKind::Meta(_) => Some(Ev::Meta),
-            TrackEventKind::Midi { channel, message } => {
-                let ch = channel.as_int();
-                Some(match message {
-                    MidiMessage::ProgramChange { program } => Ev::Program(ch, program.as_int()),
-                    MidiMessage::Controller { controller, value } if controller.as_int() == 10 => {
-                        Ev::Pan(ch, value.as_int())
-                    }
-                    MidiMessage::NoteOn { key, vel } => Ev::NoteOn(ch, key.as_int(), vel.as_int()),
-                    MidiMessage::NoteOff { key, .. } => Ev::NoteOff(ch, key.as_int()),
-                    _ => Ev::Other,
-                })
-            }
-            TrackEventKind::SysEx(_) | TrackEventKind::Escape(_) => Some(Ev::Other),
-        };
-        events.push((delta, e.unwrap_or(Ev::Meta)));
-    }
-    TrackData { events, name }
-}
-
 fn read_tracks(data: &[u8]) -> Result<(i64, Vec<TrackData>), MidiError> {
     if data.len() < 14 || &data[..4] != b"MThd" {
         return Err(MidiError::NotMidi);
     }
-    match Smf::parse(data) {
-        Ok(smf) => {
-            let tpb = match smf.header.timing {
-                Timing::Metrical(t) => t.as_int() as i64,
-                Timing::Timecode(..) => 480,
-            };
-            Ok((if tpb == 0 { 480 } else { tpb }, smf.tracks.iter().map(|t| convert_track(t)).collect()))
+    midiread::read_tracks(data).map_err(|e| {
+        if e.0.contains("no track") {
+            MidiError::NoReadableTrack
+        } else {
+            MidiError::Parse(e.0)
         }
-        Err(first) => salvage(data).map_err(|e| match e {
-            MidiError::NoReadableTrack => MidiError::Parse(first.to_string()),
-            other => other,
-        }),
-    }
-}
-
-/// The tracks of *data* that read, when one that does not sinks the file.
-fn salvage(data: &[u8]) -> Result<(i64, Vec<TrackData>), MidiError> {
-    let hlen = u32::from_be_bytes(data[4..8].try_into().unwrap()) as usize;
-    let head_end = 8 + hlen;
-    if data.len() < head_end || hlen < 6 {
-        return Err(MidiError::NotMidi);
-    }
-    let division = [data[12], data[13]];
-    let tpb = (u16::from_be_bytes(division) & 0x7FFF) as i64;
-    let mut good = Vec::new();
-    let mut i = head_end;
-    while i + 8 <= data.len() {
-        let n = u32::from_be_bytes(data[i + 4..i + 8].try_into().unwrap()) as usize;
-        let end = (i + 8 + n).min(data.len());
-        if &data[i..i + 4] == b"MTrk" {
-            let mut one = b"MThd".to_vec();
-            one.extend_from_slice(&6u32.to_be_bytes());
-            one.extend_from_slice(&[0, 1, 0, 1]);
-            one.extend_from_slice(&division);
-            one.extend_from_slice(&data[i..end]);
-            if let Ok(smf) = Smf::parse(&one) {
-                if let Some(t) = smf.tracks.first() {
-                    good.push(convert_track(t));
-                }
-            }
-        }
-        i += 8 + n;
-    }
-    if good.is_empty() {
-        return Err(MidiError::NoReadableTrack);
-    }
-    Ok((if tpb == 0 { 480 } else { tpb }, good))
+    })
 }
 
 type RawNote = (i64, i64, u8, u8, bool);

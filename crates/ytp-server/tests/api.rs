@@ -213,6 +213,7 @@ async fn csrf_is_enforced_for_cookie_sessions() {
 fn concrete(path: &str) -> String {
     path.replace("{id}", "999999")
         .replace("{name}", "nope")
+        .replace("{part}", "x")
         .replace("{*rest}", "x")
 }
 
@@ -441,8 +442,6 @@ async fn not_implemented_stubs() {
     let t = TestApp::new().await;
     let admin = t.setup_admin().await;
     for (m, p) in [
-        (Method::POST, "/api/ytpmv/render"),
-        (Method::GET, "/api/ytpmv/presets"),
         (Method::GET, "/api/projects"),
         (Method::POST, "/api/projects"),
         (Method::GET, "/api/projects/1"),

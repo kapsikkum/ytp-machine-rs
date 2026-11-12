@@ -7,8 +7,10 @@ pub mod cmudict;
 pub mod num2words;
 pub mod phonemes;
 pub mod tokenize;
+pub mod userdict;
 
 pub use phonemes::{guess_phonemes, is_vowel, phones_of, word_to_phonemes};
+pub use userdict::UserDict;
 pub use tokenize::{
     clean_word, effective_fx, tokenize, tokenize_full, tokenize_marked, EffectiveFx, Fx,
     Lexicon, NoLexicon, Note, Token,

@@ -20,6 +20,8 @@ ytp-corpus = { workspace = true }
 ytp-text = { path = "../ytp-text" }
 ytp-splice = { path = "../ytp-splice" }
 ytp-media = { path = "../ytp-media" }
+ytp-music = { path = "../ytp-music" }
+ytp-ytpmv = { path = "../ytp-ytpmv" }
 anyhow = { workspace = true }
 axum = { workspace = true }
 clap = { workspace = true }
@@ -29,6 +31,7 @@ rand = { workspace = true }
 rust-embed = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
+sha2 = { workspace = true }
 tokio = { workspace = true }
 tower = { workspace = true }
 tower-http = { workspace = true, features = ["fs"] }

@@ -167,3 +167,81 @@ fn glitches_listed_are_all_real_filters() {
     let g = r.glitches();
     assert!(g.contains(&"flip".to_string()));
 }
+
+fn psnr(a: &Path, b: &Path) -> f64 {
+    let out = Command::new(ffmpeg())
+        .args(["-hide_banner", "-i"])
+        .arg(a)
+        .arg("-i")
+        .arg(b)
+        .args(["-lavfi", "psnr", "-f", "null", "-"])
+        .output()
+        .unwrap();
+    let text = String::from_utf8_lossy(&out.stderr).into_owned();
+    let avg = text.rsplit("average:").next().unwrap_or("").split_whitespace().next().unwrap_or("");
+    if avg == "inf" {
+        return 99.0;
+    }
+    avg.parse().unwrap_or_else(|_| panic!("no PSNR in: {text}"))
+}
+
+#[test]
+fn rendering_from_cut_clips_gives_the_same_video() {
+    use ytp_media::ClipCache;
+    let Some(plain) = renderer() else { return };
+    let dir = tempfile::tempdir().unwrap();
+    let src = make_source(dir.path(), "native.mp4", "480x270");
+    let other = make_source(dir.path(), "other.mp4", "320x240");
+    let mut rev = seg(&other, "back", 4.0, 4.4, 1);
+    rev.reverse = true;
+    let segs = vec![seg(&src, "hello", 1.0, 1.4, 0), rev, seg(&src, "again", 6.0, 6.4, 2)];
+    let opts = GenerationOptions::default();
+
+    let cached = FfmpegRenderer::new(ffmpeg()).with_cache(ClipCache::new(
+        dir.path().join("cache"),
+        64 << 20,
+        ffmpeg(),
+    ));
+    let cache = cached.cache().unwrap();
+    // The first render reads the sources, as without a cache; the cuts and the
+    // measurements it made are kept for the next one.
+    render(&cached, &segs, &opts, false, &dir.path().join("first.mp4"));
+    assert!(cache.wait_idle(std::time::Duration::from_secs(60)));
+    let kept = cache.stats();
+    assert!(kept.files >= 3, "{kept:?}");
+
+    render(&cached, &segs, &opts, false, &dir.path().join("second.mp4"));
+    render(&plain, &segs, &opts, false, &dir.path().join("plain.mp4"));
+    let (second, plain_out) = (dir.path().join("second.mp4"), dir.path().join("plain.mp4"));
+    let (a, b) = (duration(&second), duration(&plain_out));
+    if a >= 0.0 && b >= 0.0 {
+        assert!((a - b).abs() < 0.1, "duration {a} vs {b}");
+    }
+    let db = psnr(&second, &plain_out);
+    eprintln!("cached vs uncached video: {db:.1} dB PSNR");
+    assert!(db > 30.0, "video differs from the uncached render: {db} dB");
+    // nothing new was needed the second time
+    assert!(cache.wait_idle(std::time::Duration::from_secs(60)));
+    assert_eq!(cache.stats().files, kept.files);
+}
+
+#[test]
+fn a_cut_cache_never_outgrows_its_cap() {
+    use ytp_media::ClipCache;
+    let Some(r) = renderer() else { return };
+    let dir = tempfile::tempdir().unwrap();
+    let src = make_source(dir.path(), "native.mp4", "480x270");
+    let cap = 400_000;
+    let cache = ClipCache::new(dir.path().join("cache"), cap, ffmpeg());
+    for k in 0..6 {
+        let (start, read) = (0.5 + k as f64, 0.8);
+        assert!(cache.lookup(&src, start, read).is_none(), "a miss reads the source");
+        assert!(cache.wait_idle(std::time::Duration::from_secs(60)));
+    }
+    let s = cache.stats();
+    assert!(s.files >= 1 && s.bytes <= cap, "{s:?}");
+    // the most recent cut is still there; the oldest went first
+    assert!(cache.lookup(&src, 5.5, 0.8).is_some());
+    assert!(cache.lookup(&src, 0.5, 0.8).is_none());
+    drop(r);
+}

@@ -14,7 +14,7 @@ use ytp_core::{Error, JobState};
 
 use crate::auth::{ClientIp, CurrentUser};
 use crate::error::{ApiError, ApiJson, ApiPath, ApiResult};
-use crate::jobs::{check_text, JobRecord, NewJob};
+use crate::jobs::{check_options, check_text, JobRecord, NewJob};
 use crate::AppState;
 
 #[derive(Deserialize)]
@@ -57,6 +57,7 @@ pub async fn generate(
         Some(v @ Value::Object(_)) => v,
         Some(_) => return Err(Error::invalid("options must be an object").into()),
     };
+    check_options(&options)?;
     let rec = st.jobs.submit(
         &me,
         NewJob {

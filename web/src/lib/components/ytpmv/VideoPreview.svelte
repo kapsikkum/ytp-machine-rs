@@ -65,7 +65,7 @@
       <div class="empty">Load a song to see its tiles.</div>
     {/each}
   </div>
-  <p class="status" role="status">Drag tiles to arrange · Alt + ← / → moves the focused tile (not available yet)</p>
+  <p class="status" role="status">Tiles follow the order of the tracks</p>
 </div>
 
 <style>

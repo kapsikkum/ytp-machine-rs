@@ -13,6 +13,7 @@ use ytp_auth::{secret, Credential, Permission, Principal};
 
 use crate::error::{ApiError, ApiResult};
 use crate::routes::Access;
+use crate::throttle::Throttled;
 use crate::AppState;
 
 pub const SESSION_COOKIE: &str = "ytp_session";
@@ -177,6 +178,20 @@ pub async fn resolve(
     Ok(None)
 }
 
+/// Requests that start generation work count against `requests_per_minute`.
+fn is_throttled(m: &Method, path: &str) -> bool {
+    if is_safe_method(m) {
+        return false;
+    }
+    // Uploading, renaming and deleting a MIDI file is cheap; only the routes
+    // that make audio or video count.
+    path == "/api/ytp/generate"
+        || matches!(
+            path,
+            "/api/ytpmv/sample" | "/api/ytpmv/sample/audio" | "/api/ytpmv/preview" | "/api/ytpmv/preview-mix" | "/api/ytpmv/render"
+        )
+}
+
 fn is_safe_method(m: &Method) -> bool {
     matches!(*m, Method::GET | Method::HEAD | Method::OPTIONS)
 }
@@ -241,6 +256,17 @@ async fn check(st: &AppState, access: Access, req: &mut Request) -> ApiResult<()
             require(&p, perm)?
         }
         _ => {}
+    }
+
+    // After the permission check: a request that would be refused anyway
+    // does not spend the caller's tokens.
+    if is_throttled(req.method(), req.uri().path()) {
+        if let Err(t) = st.throttle.take(p.user.id, p.quota.requests_per_minute) {
+            return Err(match t {
+                Throttled::Off => ApiError::forbidden("your role may not make these requests"),
+                Throttled::Wait(secs) => ApiError::rate_limited(secs),
+            });
+        }
     }
     req.extensions_mut().insert(CurrentUser(p));
     Ok(())

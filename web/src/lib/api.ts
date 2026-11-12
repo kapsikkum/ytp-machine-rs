@@ -4,10 +4,15 @@ import type {
   Corpus,
   JobRecord,
   LoginResponse,
+  MidiAnalysis,
+  MidiEntry,
+  PartSettingsJson,
+  Recommended,
   Role,
   Quota,
   Token,
-  User
+  User,
+  YtpmvInfo
 } from './types';
 
 const BASE = '/api';
@@ -117,6 +122,36 @@ async function request<T>(path: string, opts: RequestOptions = {}): Promise<T> {
   return data as T;
 }
 
+/** POST JSON, get a WAV back, with what the server did in `X-Ytpmv-Info`. */
+async function audio(path: string, body: unknown, signal?: AbortSignal): Promise<{ blob: Blob; info: YtpmvInfo }> {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (csrfToken) headers['X-CSRF-Token'] = csrfToken;
+  let res: Response;
+  try {
+    res = await fetch(url(path), { method: 'POST', headers, body: JSON.stringify(body), credentials: 'include', signal });
+  } catch (e) {
+    if (e instanceof DOMException && e.name === 'AbortError') throw e;
+    throw new ApiError(0, 'network', `could not reach the server (${e instanceof Error ? e.message : String(e)})`);
+  }
+  if (!res.ok) {
+    let obj: { error?: string; message?: string } = {};
+    try {
+      obj = (await res.json()) as typeof obj;
+    } catch {
+      /* not JSON */
+    }
+    if (res.status === 401) unauthorizedHandler?.();
+    throw new ApiError(res.status, obj.error ?? `http_${res.status}`, obj.message ?? `the server replied ${res.status}`);
+  }
+  let info: YtpmvInfo = {};
+  try {
+    info = JSON.parse(res.headers.get('x-ytpmv-info') ?? '{}') as YtpmvInfo;
+  } catch {
+    /* no info */
+  }
+  return { blob: await res.blob(), info };
+}
+
 const json = (method: string, body?: unknown) => ({ method, body });
 const enc = encodeURIComponent;
 
@@ -175,13 +210,25 @@ export const api = {
   ytp: {
     generate: (body: Record<string, unknown>) => request<{ job_id: string }>('/ytp/generate', json('POST', body))
   },
-  /** Later phases: the server answers 501 and these throw NotImplementedError. */
   ytpmv: {
-    midi: (file: File) => {
+    library: () => request<MidiEntry[]>('/ytpmv/library'),
+    upload: (file: File, voice?: string) => {
       const form = new FormData();
       form.append('midi', file);
-      return request<unknown>('/ytpmv/midi', { method: 'POST', form });
+      if (voice) form.append('voice', voice);
+      return request<MidiAnalysis>('/ytpmv/midi', { method: 'POST', form });
     },
+    open: (id: string, voice?: string) => request<MidiAnalysis>(`/ytpmv/midi/${enc(id)}`, { query: { voice } }),
+    rename: (id: string, title: string) => request<{ midi_id: string; title: string }>(`/ytpmv/midi/${enc(id)}`, json('PATCH', { title })),
+    remove: (id: string) => request<void>(`/ytpmv/midi/${enc(id)}`, json('DELETE')),
+    part: (id: string, part: string, voice?: string) =>
+      request<{ id: string; recommended: Recommended; settings: PartSettingsJson }>(`/ytpmv/midi/${enc(id)}/part/${enc(part)}`, {
+        query: { voice }
+      }),
+    sampleAudio: (body: { text: string; take?: number; corpus?: string; hit?: string }, signal?: AbortSignal) =>
+      audio('/ytpmv/sample/audio', body, signal),
+    previewPart: (body: Record<string, unknown>, signal?: AbortSignal) => audio('/ytpmv/preview', body, signal),
+    previewMix: (body: Record<string, unknown>, signal?: AbortSignal) => audio('/ytpmv/preview-mix', body, signal),
     render: (body: Record<string, unknown>) => request<{ job_id: string }>('/ytpmv/render', json('POST', body))
   },
   jobs: {

@@ -14,15 +14,14 @@
 <div class="card wbcard">
   <h2>{song.title}</h2>
   <div class="chips">
-    <span class="chip"><b>{song.bpm}</b> bpm</span>
+    <span class="chip"><b>{Math.round(song.bpm)}</b> bpm</span>
     <span class="chip"><b>{song.key}</b></span>
     <span class="chip"><b>{song.parts.length}</b> parts</span>
-    <span class="chip"><b>{clock(song.duration).replace(/\.00$/, '')}</b> long</span>
-    {#if song.sample}<span class="chip sample">sample · layout only</span>{/if}
+    <span class="chip"><b>{clock(song.duration).replace(/\.\d+$/, '')}</b> long</span>
   </div>
   <div class="project-tools">
     <button type="button" onclick={onimport}>Import MIDI</button>
-    {#if canRender}<button type="button" class="primary" disabled={rendering} onclick={onrender}>render video</button>{/if}
+    {#if canRender}<button type="button" class="primary" disabled={rendering} onclick={onrender}>{rendering ? 'rendering…' : 'render video'}</button>{/if}
   </div>
 </div>
 
@@ -35,7 +34,6 @@
   .chips { flex: 1; display: flex; flex-wrap: wrap; gap: .7rem; }
   .chip { font-size: .68rem; color: var(--muted); white-space: nowrap; }
   .chip b { color: var(--text); font-weight: 400; }
-  .chip.sample { color: var(--amber); }
   .project-tools { display: flex; gap: .5rem; flex-wrap: wrap; align-items: center; }
   .project-tools button { font-size: .75rem; min-height: 34px; border-radius: 4px; }
   @media (max-width: 650px) {
