@@ -1,0 +1,36 @@
+[package]
+name = "ytp-bot"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "Platform-agnostic chat bot core (commands, permissions, job flow) with Matrix and Discord adapters."
+
+[features]
+default = []
+matrix = ["dep:matrix-sdk", "dep:mime"]
+discord = ["dep:serenity", "dep:poise"]
+
+[dependencies]
+ytp-auth = { workspace = true }
+async-trait = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+shlex = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+
+matrix-sdk = { version = "0.10", optional = true, default-features = false, features = ["native-tls"] }
+mime = { version = "0.3", optional = true }
+serenity = { version = "0.12", optional = true, default-features = false, features = [
+    "client",
+    "gateway",
+    "http",
+    "model",
+    "cache",
+    "rustls_backend",
+] }
+poise = { version = "0.7", optional = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }

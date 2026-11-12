@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/ytp-core", "crates/ytp-auth", "crates/ytp-corpus", "crates/ytp-server", "crates/ytp-text", "crates/ytp-splice", "crates/ytp-media", "crates/ytp-music", "crates/ytp-ytpmv", "crates/ytp-encode"]
+members = ["crates/ytp-core", "crates/ytp-auth", "crates/ytp-corpus", "crates/ytp-server", "crates/ytp-text", "crates/ytp-splice", "crates/ytp-media", "crates/ytp-music", "crates/ytp-ytpmv", "crates/ytp-encode", "crates/ytp-bot"]
 
 [workspace.package]
 version = "0.1.0"
@@ -15,6 +15,7 @@ ytp-corpus = { path = "crates/ytp-corpus" }
 
 anyhow = "1"
 argon2 = "0.5"
+async-trait = "0.1"
 axum = { version = "0.8", features = ["ws", "multipart", "macros"] }
 base64 = "0.22"
 chrono = { version = "0.4", default-features = false, features = ["clock", "std", "serde"] }
@@ -27,6 +28,7 @@ rust-embed = { version = "8", features = ["interpolate-folder-path", "mime-guess
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 sha2 = "0.10"
+shlex = "1"
 sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "sqlite", "migrate", "macros"] }
 subtle = "2"
 tar = { version = "0.4", default-features = false }
