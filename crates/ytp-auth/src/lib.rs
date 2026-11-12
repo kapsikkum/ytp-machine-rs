@@ -2,6 +2,7 @@
 
 pub mod password;
 pub mod permission;
+pub mod projects;
 pub mod ratelimit;
 pub mod role;
 pub mod secret;
@@ -9,6 +10,7 @@ pub mod store;
 pub mod throttle;
 
 pub use permission::Permission;
+pub use projects::{Access, ProjectMeta, Share, StoredProject};
 pub use ratelimit::LoginLimiter;
 pub use role::{Quota, Role};
 pub use throttle::{Throttle, Throttled};

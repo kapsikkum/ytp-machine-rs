@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { onDestroy, onMount, untrack } from 'svelte';
+  import { goto } from '$app/navigation';
+import { onDestroy, onMount, untrack } from 'svelte';
   import { api, ApiError, errorText } from '#lib/api.ts';
   import { can } from '#lib/auth.ts';
   import { storage } from '#lib/store.ts';
@@ -365,6 +366,30 @@
     else if (untrack(() => job?.state) !== ev.state) void refresh(id);
   });
 
+  // The finished render's plan as a project, opened in the Studio.
+  let openingStudio = $state(false);
+  async function openInStudio() {
+    const j = job;
+    if (!j || j.state !== 'done') return;
+    openingStudio = true;
+    try {
+      const r = await api.ytpmv.plan({
+        midi_id: j.options.midi_id,
+        parts: j.options.parts,
+        options: j.options.options,
+        voice: j.voice || undefined,
+        name: song?.title || undefined,
+        save: true
+      });
+      await goto(`/?project=${r.id}`);
+    } catch (e) {
+      renderError = true;
+      renderStatus = errorText(e);
+    } finally {
+      openingStudio = false;
+    }
+  }
+
   async function render() {
     if (!song) return;
     stop();
@@ -509,6 +534,9 @@
             <div class="line">
               <span>{summary}</span>
               <a class="btn" href={job.result_url} download="{song.title || 'ytpmv'}.mp4">download</a>
+        {#if $can('studio.use') && $can('project.write')}
+          <button type="button" class="btn" disabled={openingStudio} onclick={openInStudio}>{openingStudio ? 'Opening…' : 'Open in Studio'}</button>
+        {/if}
             </div>
             {#each report?.problems ?? [] as p, i (i)}<p class="warn">{p}</p>{/each}
             {#each job.warnings as w, i (i)}<p class="warn">{w}</p>{/each}

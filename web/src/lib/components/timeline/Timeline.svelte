@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { clock, type Track } from '#lib/timeline.ts';
+  import { clock, type Clip, type Track } from '#lib/timeline.ts';
 
   // The multi-track arrangement view, in the Vegas / Movie Maker manner: pinned
   // track heads on the left, a ruler on top, one lane per track. Styled after
@@ -25,6 +25,7 @@
   let pps = $state(60); // pixels per second
   let lanes = $state<HTMLDivElement>();
   let viewWidth = $state(800);
+  let scrolled = $state(0);
 
   const HEAD = 360;
   const width = $derived(Math.max(duration * pps, viewWidth - HEAD));
@@ -33,6 +34,14 @@
     return [0.25, 0.5, 1, 2, 5, 10, 15, 30, 60, 120, 300].find((s) => s >= target) ?? 600;
   });
   const ticks = $derived(Array.from({ length: Math.floor(width / pps / step) + 1 }, (_, i) => i * step));
+
+  // A long song is thousands of clips: draw the ones in (or near) the visible stretch.
+  function inView(clips: Clip[] | undefined): Clip[] {
+    if (!clips || clips.length < 200) return clips ?? [];
+    const lo = (scrolled - HEAD) / pps - 2;
+    const hi = (scrolled + viewWidth - HEAD) / pps + 2;
+    return clips.filter((c) => c.start + c.length >= lo && c.start <= hi);
+  }
 
   function seek(e: PointerEvent) {
     const el = e.currentTarget as HTMLElement;
@@ -52,7 +61,7 @@
     <div class="readout"><span class="pos">{clock(playhead)}</span><span>{tracks.length} track{tracks.length === 1 ? '' : 's'}</span></div>
   </div>
 
-  <div class="lanes" bind:this={lanes} bind:clientWidth={viewWidth} role="group" aria-label="Arrangement">
+  <div class="lanes" bind:this={lanes} bind:clientWidth={viewWidth} onscroll={() => (scrolled = lanes?.scrollLeft ?? 0)} role="group" aria-label="Arrangement">
     <div class="content" style:width="{HEAD + width}px" style:--head="{HEAD}px" style:--cursor-x="{HEAD + playhead * pps}px">
       <div class="ruler">
         <span class="corner">tracks</span>
@@ -78,7 +87,7 @@
             <span class="kind">{t.kind}</span>
           </div>
           <div class="region" role="presentation" onpointerdown={seek}>
-            {#each t.clips ?? [] as c (c.id)}
+            {#each inView(t.clips) as c (c.id)}
               <button type="button" class="clip" style:left="{c.start * pps}px" style:width="{Math.max(6, c.length * pps)}px" title={c.label}
                       onpointerdown={(e) => e.stopPropagation()} onclick={() => onselect?.(t.id)}>{c.label}</button>
             {/each}

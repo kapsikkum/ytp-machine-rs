@@ -29,6 +29,10 @@ pub struct Inner {
     pub encoder: Arc<ytp_encode::Encoder>,
     /// The MIDI library and what YTPMV renders are made from.
     pub ytpmv: crate::ytpmv::Service,
+    /// Timeline projects: plans, project renders, previews and their caches.
+    pub projects: crate::projects::Service,
+    /// What the chat bots report (empty until `bots::start` runs).
+    pub bots: crate::bots::BotRegistry,
 }
 
 #[derive(Clone)]
@@ -71,6 +75,7 @@ impl AppState {
         };
         let (events, _) = broadcast::channel(256);
         let jobs = Jobs::new(&config.data_dir, config.job_workers, events.clone());
+        let projects = crate::projects::Service::new(&config.data_dir, ffmpeg.clone(), encoder.clone());
         let ytpmv = crate::ytpmv::Service::new(&config.data_dir, ffmpeg);
         let state = Self(Arc::new(Inner {
             config,
@@ -84,6 +89,8 @@ impl AppState {
             renderer,
             encoder,
             ytpmv,
+            projects,
+            bots: crate::bots::BotRegistry::default(),
         }));
         crate::jobs::start_workers(&state);
         Ok(state)

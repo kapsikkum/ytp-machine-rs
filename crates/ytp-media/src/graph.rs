@@ -105,7 +105,7 @@ pub fn plan_chunk(
     env: &dyn GraphEnv,
     audio: &AudioCache,
 ) -> ChunkPlan {
-    let (speed, pitch) = (opts.speed, opts.pitch);
+    let pitch = opts.pitch;
     let n = segments.len();
     let mut inputs = Vec::with_capacity(n);
     let mut durations = Vec::with_capacity(n);
@@ -131,6 +131,7 @@ pub fn plan_chunk(
     let mut parts: Vec<String> = Vec::new();
     for (i, seg) in segments.iter().enumerate() {
         let dur0 = durations[i];
+        let speed = seg.speed.unwrap_or(opts.speed);
         let fi = seg.fade_in.unwrap_or(FADE_IN);
         let fo = seg.fade_out.unwrap_or(FADE_OUT);
         let pause = seg.pause();

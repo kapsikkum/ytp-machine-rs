@@ -14,6 +14,7 @@ import type {
   User,
   YtpmvInfo
 } from './types';
+import type { Project, ProjectMeta, StoredProject, TrackMix } from './project';
 
 const BASE = '/api';
 
@@ -152,6 +153,54 @@ async function audio(path: string, body: unknown, signal?: AbortSignal): Promise
   return { blob: await res.blob(), info };
 }
 
+/** POST JSON, get a video back (the preview of a window), with what the server did in X-Preview-Info. */
+async function video(path: string, body: unknown, signal?: AbortSignal): Promise<{ blob: Blob; info: PreviewInfo }> {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (csrfToken) headers['X-CSRF-Token'] = csrfToken;
+  let res: Response;
+  try {
+    res = await fetch(url(path), { method: 'POST', headers, body: JSON.stringify(body), credentials: 'include', signal });
+  } catch (e) {
+    if (e instanceof DOMException && e.name === 'AbortError') throw e;
+    throw new ApiError(0, 'network', `could not reach the server (${e instanceof Error ? e.message : String(e)})`);
+  }
+  if (!res.ok) {
+    let obj: { error?: string; message?: string } = {};
+    try {
+      obj = (await res.json()) as typeof obj;
+    } catch {
+      /* not JSON */
+    }
+    if (res.status === 401) unauthorizedHandler?.();
+    throw new ApiError(res.status, obj.error ?? `http_${res.status}`, obj.message ?? `the server replied ${res.status}`);
+  }
+  let info: PreviewInfo = { cache: res.headers.get('x-preview-cache') ?? '', ms: Number(res.headers.get('x-preview-ms') ?? 0) };
+  try {
+    info = { ...info, ...(JSON.parse(res.headers.get('x-preview-info') ?? '{}') as object) };
+  } catch {
+    /* no info */
+  }
+  return { blob: await res.blob(), info };
+}
+
+export interface PreviewInfo {
+  /** hit when the window came from the server's cache. */
+  cache: string;
+  /** Milliseconds the server took. */
+  ms: number;
+  kind?: string;
+  clips?: number;
+  proxied?: number;
+}
+
+export interface PreviewRequest {
+  project_id?: number;
+  project?: Project;
+  start: number;
+  duration: number;
+  tracks?: Partial<TrackMix>[];
+}
+
 const json = (method: string, body?: unknown) => ({ method, body });
 const enc = encodeURIComponent;
 
@@ -208,7 +257,9 @@ export const api = {
   },
 
   ytp: {
-    generate: (body: Record<string, unknown>) => request<{ job_id: string }>('/ytp/generate', json('POST', body))
+    generate: (body: Record<string, unknown>) => request<{ job_id: string }>('/ytp/generate', json('POST', body)),
+    /** The plan of a sentence as a project, not rendered; with save, stored and { id } answered. */
+    plan: (body: Record<string, unknown>) => request<{ id?: number; project?: Project }>('/ytp/plan', json('POST', body))
   },
   ytpmv: {
     library: () => request<MidiEntry[]>('/ytpmv/library'),
@@ -229,7 +280,8 @@ export const api = {
       audio('/ytpmv/sample/audio', body, signal),
     previewPart: (body: Record<string, unknown>, signal?: AbortSignal) => audio('/ytpmv/preview', body, signal),
     previewMix: (body: Record<string, unknown>, signal?: AbortSignal) => audio('/ytpmv/preview-mix', body, signal),
-    render: (body: Record<string, unknown>) => request<{ job_id: string }>('/ytpmv/render', json('POST', body))
+    render: (body: Record<string, unknown>) => request<{ job_id: string }>('/ytpmv/render', json('POST', body)),
+    plan: (body: Record<string, unknown>) => request<{ id?: number; project?: Project }>('/ytpmv/plan', json('POST', body))
   },
   jobs: {
     get: (id: string) => request<JobRecord>(`/jobs/${enc(id)}`),
@@ -238,6 +290,14 @@ export const api = {
     resultUrl: (id: string) => `${BASE}/jobs/${enc(id)}/result`
   },
   projects: {
-    list: () => request<unknown[]>('/projects')
-  }
+    list: () => request<ProjectMeta[]>('/projects'),
+    get: (id: number) => request<StoredProject>(`/projects/${id}`),
+    create: (project: Project, name?: string) => request<StoredProject>('/projects', json('POST', { project, name })),
+    update: (id: number, b: { project?: Project; name?: string; revision?: number }) =>
+      request<StoredProject>(`/projects/${id}`, json('PATCH', b)),
+    remove: (id: number) => request<void>(`/projects/${id}`, json('DELETE')),
+    render: (id: number) => request<{ job_id: string }>(`/projects/${id}/render`, json('POST'))
+  },
+  /** A low-res render of a window of a project. */
+  preview: (body: PreviewRequest, signal?: AbortSignal) => video('/preview', body, signal)
 };

@@ -120,6 +120,7 @@ async fn serve(data_dir: PathBuf, a: ServeArgs) -> anyhow::Result<()> {
         .await
         .context("opening data directory")?;
     state.spawn_maintenance();
+    ytp_server::bots::start(&state);
     match state.renderer.check() {
         Ok(v) => tracing::info!(ffmpeg = %v, "rendering enabled"),
         Err(e) => tracing::warn!("rendering unavailable until ffmpeg is installed or --ffmpeg is set: {e}"),

@@ -158,7 +158,10 @@ pub fn segment_durations(
 ) -> (f64, f64, f64) {
     let span = (window.1 - window.0).max(0.0);
     let sounding = span * seg.stretch.unwrap_or(1.0);
-    let total = (sounding + seg.pause()) / opts.speed;
+    if let Some(length) = seg.length {
+        return (span, sounding, length);
+    }
+    let total = (sounding + seg.pause()) / seg.speed.unwrap_or(opts.speed);
     if seg.subword {
         return (span, sounding, total);
     }

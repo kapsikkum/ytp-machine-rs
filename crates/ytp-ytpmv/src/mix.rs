@@ -60,7 +60,7 @@ pub struct Request<'a> {
     pub audition: Option<(String, Vec<u8>)>,
     /// Audio only: no tiles, no picture.
     pub audio_only: bool,
-    /// Where in the song to start (audio only).
+    /// Where in the song to start (a window for previews; renders start at 0).
     pub start_seconds: f64,
     /// Play and recommend only this part (the song still decides how a chip switch routes the others).
     pub only_part: Option<String>,
@@ -261,7 +261,7 @@ pub fn prepare(req: &Request, progress: Progress) -> Result<Prepared> {
     let chip_parts: HashSet<String> =
         song.parts.iter().filter(|p| synth_tones().contains(&settings[&p.id].tone)).map(|p| p.id.clone()).collect();
 
-    let t_from = if req.audio_only { num_f(Some(&json!(start_seconds)), 0.0, 0.0, (song.duration / speed).max(0.0)) } else { 0.0 };
+    let t_from = num_f(Some(&json!(start_seconds)), 0.0, 0.0, (song.duration / speed).max(0.0));
     let t_end = (song.duration / speed + TAIL).min(t_from + opts.max_seconds);
     let n_frames = (((t_end - t_from) * FPS as f64).round_ties_even() as usize).max(1);
 
@@ -694,6 +694,138 @@ fn play(
     Ok(hits)
 }
 
+/// One note of a part as the render would play it, without playing it.
+#[derive(Clone, Debug, PartialEq)]
+pub struct PlannedNote {
+    /// Seconds from the start of the video.
+    pub start: f64,
+    /// How long it is heard.
+    pub dur: f64,
+    /// MIDI note after the part's octave/transpose and the global transpose.
+    pub midi: i32,
+    pub velocity: u8,
+    /// Which of the part's takes played it.
+    pub take: usize,
+    /// First note of its chord: the one that makes a [`Hit`].
+    pub new_hit: bool,
+    /// The picture is mirrored on this hit.
+    pub flip: bool,
+}
+
+/// The notes [`play`] would sing for `part`, in the order it sings them, with
+/// the same choices (which take, how long) but none of the synthesis.
+///
+/// This mirrors `play`'s decisions line for line — including the random
+/// draws, because the take of a hit depends on how many draws came before —
+/// and a test holds the two together.
+fn plan_notes(part: &Part, s: &PartSettings, takes: &[Arc<Sample>], c: &PlayCtx) -> Vec<PlannedNote> {
+    let drums = part.is_drums();
+    let shift = 12 * s.octave + s.transpose + if drums { 0 } else { c.g_transpose };
+    let mut rng = PyRandom::from_str_seed(&format!("{}|{}|{}", part.id, takes.len(), s.text.as_deref().unwrap_or("None")));
+    let mut notes: Vec<&Note> = part.notes.iter().collect();
+    notes.sort_by(|a, b| a.start.partial_cmp(&b.start).unwrap_or(std::cmp::Ordering::Equal).then(a.pitch.cmp(&b.pitch)));
+    let mut starts: Vec<f64> = notes.iter().map(|n| n.start).collect();
+    starts.dedup();
+    let mut out: Vec<PlannedNote> = Vec::new();
+    let mut hits = 0usize;
+    let mut last_start: Option<f64> = None;
+    let mut pick = 0usize;
+    let sr = SR as f64;
+    for n in notes {
+        let t0 = n.start / c.speed;
+        if t0 >= c.t_end {
+            break;
+        }
+        if last_start != Some(n.start) {
+            pick = if c.vary == "off" || takes.len() <= 1 {
+                0
+            } else if c.vary == "random" || c.vary == "ultra" {
+                rng.randbelow(takes.len() as u64) as usize
+            } else {
+                let beat = starts.partition_point(|x| *x < n.start);
+                beat % takes.len()
+            };
+        }
+        let j = starts.partition_point(|x| *x <= n.start);
+        let nxt = if j < starts.len() { starts[j] / c.speed } else { c.t_end };
+        let ring = s.sustain == "ring";
+        let d = match takes.get(pick) {
+            None => {
+                if ring {
+                    RING_MAX.min(nxt - t0)
+                } else {
+                    n.dur / c.speed
+                }
+            }
+            Some(smp) => {
+                if ring {
+                    smp.voice.duration().min(nxt - t0)
+                } else {
+                    n.dur / c.speed
+                }
+            }
+        };
+        let dur = d.min(c.t_end - t0);
+        if dur <= 0.0 {
+            continue;
+        }
+        if c.jitter {
+            if drums {
+                rng.uniform(-0.25, 0.25);
+            }
+            rng.uniform(-1.2, 1.2);
+        }
+        if let Some(cut) = c.cuts.and_then(|m| m.get(&(part.id.clone(), n.start.to_bits(), n.pitch))) {
+            if ((cut - t0) * sr).round_ties_even() as i64 <= 0 {
+                continue;
+            }
+        }
+        let new_hit = last_start != Some(n.start);
+        if new_hit {
+            last_start = Some(n.start);
+        }
+        out.push(PlannedNote {
+            start: t0,
+            dur,
+            midi: n.pitch as i32 + shift,
+            velocity: n.velocity,
+            take: pick,
+            new_hit,
+            flip: new_hit && c.flip && hits % 2 == 1,
+        });
+        if new_hit {
+            hits += 1;
+        }
+    }
+    out
+}
+
+fn play_ctx(prep: &Prepared, n: usize) -> PlayCtx<'_> {
+    PlayCtx {
+        n,
+        t_from: prep.t_from,
+        t_end: prep.t_end,
+        speed: prep.opts.speed,
+        g_transpose: prep.opts.g_transpose,
+        flip: prep.opts.flip,
+        jitter: prep.opts.jitter,
+        vary: &prep.opts.vary,
+        cuts: prep.cuts.as_ref(),
+    }
+}
+
+/// What every part of a prepared song would play, per part id, without
+/// synthesising anything.
+pub fn plan_song(prep: &Prepared) -> Vec<(String, Vec<PlannedNote>)> {
+    let ctx = play_ctx(prep, prep.frames());
+    prep.wanted
+        .iter()
+        .filter(|id| prep.sample_of.contains_key(*id))
+        .filter_map(|id| prep.song.part(id))
+        .map(|part| (part.id.clone(), plan_notes(part, &prep.settings[&part.id], &prep.sample_of[&part.id], &ctx)))
+        .collect()
+}
+
 // ── Mixing ───────────────────────────────────────────────────────────────────
 
 /// The finished audio and what the picture needs from it.
@@ -730,17 +862,7 @@ pub fn mix(prep: &Prepared, progress: Progress) -> Result<Mixed> {
     };
     say(progress, "notes", 0, total)?;
     let tile_of: HashMap<&str, &Tile> = prep.tiles.iter().map(|t| (t.id.as_str(), t)).collect();
-    let ctx = PlayCtx {
-        n,
-        t_from: prep.t_from,
-        t_end: prep.t_end,
-        speed: opts.speed,
-        g_transpose: opts.g_transpose,
-        flip: opts.flip,
-        jitter: opts.jitter,
-        vary: &opts.vary,
-        cuts: prep.cuts.as_ref(),
-    };
+    let ctx = play_ctx(prep, n);
     let outs: Vec<Result<PartOut>> = parallel(parts.len(), threads(), |i| {
         let part = parts[i];
         let s = &prep.settings[&part.id];

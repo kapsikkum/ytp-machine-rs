@@ -144,17 +144,8 @@ impl BotCore {
     /// Handle one chat message. Errors that the person should see are sent as
     /// replies; nothing here is allowed to bring the adapter down.
     pub async fn handle(&self, event: ChatEvent, transport: &dyn ChatTransport) {
-        if let (Some(event_id), Some(midi)) = (event.event_id.as_deref(), event.midi.as_ref()) {
-            self.midi
-                .lock()
-                .unwrap()
-                .remember(&event.room, event_id, midi.clone());
-        }
-
-        let Some(cmd) = parse(&event.text, &self.config.prefix, event.direct) else {
-            return;
-        };
-
+        // Nothing from outside the allow-list is looked at, not even a MIDI
+        // file someone else might later ask to be used.
         let allowed = match event.platform {
             Platform::Matrix => self.policy.matrix_allowed(&event.user_id, &event.room),
             Platform::Discord => self.policy.discord_allowed(
@@ -167,6 +158,17 @@ impl BotCore {
             tracing::debug!(user = %event.user_id, room = %event.room, "ignoring a message from outside the allow-list");
             return;
         }
+
+        if let (Some(event_id), Some(midi)) = (event.event_id.as_deref(), event.midi.as_ref()) {
+            self.midi
+                .lock()
+                .unwrap()
+                .remember(&event.room, event_id, midi.clone());
+        }
+
+        let Some(cmd) = parse(&event.text, &self.config.prefix, event.direct) else {
+            return;
+        };
 
         match cmd.name {
             CommandName::Help => {

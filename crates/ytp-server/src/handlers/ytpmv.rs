@@ -68,7 +68,11 @@ async fn load_banks(st: &AppState, names: &[String]) -> ApiResult<Banks> {
 }
 
 async fn song_of(st: &AppState, me: &CurrentUser, id: &str) -> ApiResult<std::sync::Arc<Song>> {
-    let (st2, id, owner) = (st.clone(), id.to_string(), me.user.id);
+    song_for(st, me.user.id, id).await
+}
+
+async fn song_for(st: &AppState, owner: i64, id: &str) -> ApiResult<std::sync::Arc<Song>> {
+    let (st2, id) = (st.clone(), id.to_string());
     blocking(move || st2.ytpmv.load_song(owner, &id)).await
 }
 
@@ -116,7 +120,12 @@ pub struct VoiceQuery {
 
 /// Describe a song and suggest a sound for every part.
 async fn describe(st: &AppState, me: &CurrentUser, id: &str, voice: Option<&str>) -> ApiResult<Value> {
-    let song = song_of(st, me, id).await?;
+    describe_for(st, me.user.id, id, voice).await
+}
+
+/// [`describe`] for a MIDI file in `owner`'s library (the chat bots call this).
+pub(crate) async fn describe_for(st: &AppState, owner: i64, id: &str, voice: Option<&str>) -> ApiResult<Value> {
+    let song = song_for(st, owner, id).await?;
     let corpus = default_voice(st, voice).await?;
     let banks = match &corpus {
         Some(c) => load_banks(st, std::slice::from_ref(c)).await?,
@@ -455,15 +464,20 @@ pub async fn preview_mix(State(st): State<AppState>, me: CurrentUser, ApiJson(bo
 
 /// Queue a render of the whole song to video; follow it as a job.
 pub async fn render(State(st): State<AppState>, me: CurrentUser, ApiJson(body): ApiJson<Value>) -> ApiResult<Json<Value>> {
+    Ok(Json(queue_render(&st, &me, &body).await?))
+}
+
+/// Validate a render request and queue it as `me` (the chat bots call this).
+pub(crate) async fn queue_render(st: &AppState, me: &ytp_auth::Principal, body: &Value) -> ApiResult<Value> {
     if !me.has(Permission::ExportRender) {
         return Err(ApiError::forbidden("missing permission export.render"));
     }
-    let id = str_field(&body, "midi_id")?.to_string();
-    let song = song_of(&st, &me, &id).await?;
-    let parts = parts_field(&body)?;
-    let options = options_field(&body)?;
+    let id = str_field(body, "midi_id")?.to_string();
+    let song = song_for(st, me.user.id, &id).await?;
+    let parts = parts_field(body)?;
+    let options = options_field(body)?;
     let synth = truthy(options.get("synth"));
-    let corpus = default_voice(&st, body.get("voice").and_then(Value::as_str)).await?;
+    let corpus = default_voice(st, body.get("voice").and_then(Value::as_str)).await?;
     if corpus.is_none() && !synth {
         return Err(Error::invalid("no corpus is installed").into());
     }
@@ -480,7 +494,7 @@ pub async fn render(State(st): State<AppState>, me: CurrentUser, ApiJson(body): 
     }
     let title = if song.title.is_empty() { format!("midi {id}") } else { song.title.clone() };
     let rec = st.jobs.submit_as(
-        &me,
+        me,
         NewJob {
             text: title,
             voice: corpus.unwrap_or_default(),
@@ -489,5 +503,5 @@ pub async fn render(State(st): State<AppState>, me: CurrentUser, ApiJson(body): 
         },
         Some("ytpmv"),
     )?;
-    Ok(Json(crate::jobs::accepted(&rec)))
+    Ok(crate::jobs::accepted(&rec))
 }

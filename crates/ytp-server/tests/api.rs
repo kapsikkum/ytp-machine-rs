@@ -266,6 +266,10 @@ async fn route_table_every_route_declares_access() {
         Permission::GenerateYtpmv,
         Permission::ExportRender,
         Permission::SettingsManage,
+        Permission::ProjectRead,
+        Permission::ProjectWrite,
+        Permission::ProjectShare,
+        Permission::StudioUse,
     ] {
         assert!(
             specs.iter().any(|s| s.access == Access::Perm(p)),
@@ -437,22 +441,6 @@ async fn token_cannot_exceed_creator_permissions() {
         .await;
     assert_eq!(r.status, StatusCode::NOT_FOUND);
     assert_eq!(t.get("/api/tokens", &admin).await.body, json!([]));
-}
-
-#[tokio::test]
-async fn not_implemented_stubs() {
-    let t = TestApp::new().await;
-    let admin = t.setup_admin().await;
-    for (m, p) in [
-        (Method::GET, "/api/projects"),
-        (Method::POST, "/api/projects"),
-        (Method::GET, "/api/projects/1"),
-        (Method::PATCH, "/api/projects/1"),
-    ] {
-        let r = t.call(m.clone(), p, &admin, Some(json!({}))).await;
-        assert_eq!(r.status, StatusCode::NOT_IMPLEMENTED, "{m} {p}");
-        assert_eq!(r.code(), "not_implemented");
-    }
 }
 
 #[tokio::test]
@@ -652,4 +640,18 @@ async fn unknown_api_paths_are_json_404_and_spa_fallback() {
         assert_eq!(r.status, StatusCode::OK);
     }
     assert_eq!(r.headers.get("referrer-policy").unwrap(), "no-referrer");
+}
+
+#[tokio::test]
+async fn admin_bots_status_needs_settings_manage() {
+    let t = TestApp::new().await;
+    let admin = t.setup_admin().await;
+    let guest = t.create_user(&admin, "guest2", &["guest"]).await;
+    assert_eq!(t.get("/api/admin/bots", &Auth::None).await.status, StatusCode::UNAUTHORIZED);
+    assert_eq!(t.get("/api/admin/bots", &guest).await.status, StatusCode::FORBIDDEN);
+    let r = t.get("/api/admin/bots", &admin).await;
+    assert_eq!(r.status, StatusCode::OK, "{:?}", r.body);
+    assert!(r.body["bots"].is_array());
+    // No credentials ever appear in the report.
+    assert!(!r.body.to_string().to_lowercase().contains("token\":\""));
 }

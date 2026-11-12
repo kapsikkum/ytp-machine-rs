@@ -1,5 +1,4 @@
-//! Bot configuration, all from the environment (and, on the server's side,
-//! from `--matrix-bot` / `--discord-bot`).
+//! Bot configuration, all from the environment.
 //!
 //! ```text
 //! YTP_BOT_USER            app account the bot speaks as (default "bot")
@@ -28,6 +27,9 @@
 //! YTP_DISCORD_PREFIX      default !ytp
 //! YTP_DISCORD_PREFIX_COMMANDS  also answer "!ytp ..." messages (needs the
 //!                         Message Content intent)
+//! YTP_DISCORD_MESSAGE_CONTENT  ask for the Message Content intent, so MIDI
+//!                         files posted in a channel are remembered for
+//!                         /ytp mv (implied by the prefix commands)
 //! ```
 
 use std::collections::{HashMap, HashSet};
@@ -45,6 +47,9 @@ pub struct MatrixSettings {
     pub prefix: String,
     pub rooms: HashSet<String>,
     pub users: HashSet<String>,
+    /// Where a password login's session is kept, so a restart reuses the
+    /// device. Set by the server (`<data>/matrix/session.json`).
+    pub session_file: Option<std::path::PathBuf>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -52,6 +57,11 @@ pub struct DiscordSettings {
     pub token: String,
     pub prefix: String,
     pub prefix_commands: bool,
+    /// Ask Discord for the Message Content intent, which the bot needs to
+    /// read `!ytp` messages and to remember MIDI files posted in a channel.
+    /// It is a privileged intent: it must be switched on in the developer
+    /// portal first or the gateway refuses the connection.
+    pub message_content: bool,
     pub guilds: HashSet<String>,
     pub channels: HashSet<String>,
     pub users: HashSet<String>,
@@ -133,6 +143,7 @@ impl Settings {
                 prefix: env("YTP_MATRIX_PREFIX").unwrap_or_else(|| prefix.clone()),
                 rooms: csv("YTP_MATRIX_ROOMS"),
                 users: matrix_users("YTP_MATRIX_USERS"),
+                session_file: None,
             })
         } else {
             None
@@ -142,11 +153,13 @@ impl Settings {
         let discord = if flag_or_credentials("YTP_DISCORD_BOT", !discord_token.is_empty())
             && !discord_token.is_empty()
         {
+            let prefix_commands = env("YTP_DISCORD_PREFIX_COMMANDS").is_some_and(|v| truthy(&v));
             Some(DiscordSettings {
                 token: discord_token,
                 prefix: env("YTP_DISCORD_PREFIX").unwrap_or_else(|| prefix.clone()),
-                prefix_commands: env("YTP_DISCORD_PREFIX_COMMANDS")
-                    .is_some_and(|v| truthy(&v)),
+                prefix_commands,
+                message_content: prefix_commands
+                    || env("YTP_DISCORD_MESSAGE_CONTENT").is_some_and(|v| truthy(&v)),
                 guilds: csv("YTP_DISCORD_GUILDS"),
                 channels: csv("YTP_DISCORD_CHANNELS"),
                 users: csv("YTP_DISCORD_USERS"),

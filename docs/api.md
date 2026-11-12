@@ -61,11 +61,10 @@ Built-in roles: `admin` (all), `editor`, `creator`, `guest`.
 | GET | /api/encode/presets | – | `{ hq: boolean, presets: Preset[] }` (`allowed: false` marks an `hq` preset the caller may not use) | export.render |
 | POST | /api/jobs/:id/export | `{ preset }` | `{ job_id }` (a new `encode` job; unknown preset 422, `hq` preset without export.hq 403, source not done or with no video file 409) | export.render (and export.hq for an hq preset); the source's owner, or jobs.view_all |
 | GET | /api/admin/encoders | – | `{ ffmpeg, ok, encoders: { encoder, available, detail }[], presets }` (each hardware encoder tried with a test encode) | settings.manage |
+| GET | /api/admin/bots | – | `{ service_user: string\|null, bots: { platform: "matrix"\|"discord", enabled, connected, last_error: string\|null, since: string\|null, detail: object }[] }`; `detail` is the non-secret configuration (homeserver, prefix, allow-list sizes...). Tokens and passwords are never returned. Empty `bots` until the server has started the bots | settings.manage |
 
-Not yet implemented (later phases, UI may call and show "not available yet" on 501):
-`/api/projects/*`.
-Server returns `501 { error: "not_implemented" }` for these (after the usual auth and
-permission checks: project.read for GET, project.write otherwise).
+Projects (the Studio's timeline documents), plans and previews are described under
+"Projects and the timeline model" below.
 
 ### YTPMV (a MIDI file sung by a corpus)
 
@@ -226,6 +225,84 @@ AuditEntry= { id: number, at: string, actor: string|null, action: string, target
 Corpus    = { name: string, words: number, clips: number, sources: number, size_bytes: number, installed_at: string }
 ```
 
+## Projects and the timeline model
+
+One document, `Project`, is what both generators produce and the Studio edits
+(`crates/ytp-core/src/timeline.rs`; versioned: `version` is 1 and any other value is refused).
+Times are seconds.
+
+```jsonc
+Project {
+  version: 1, id?: number, owner?: number,       // id/owner are filled in by the server
+  name: string, corpus: string,                   // corpus = default voice
+  fps: 25, width: 480, height: 270,
+  captions: boolean,                              // burn word captions in
+  generator?: { kind: "ytp"|"ytpmv", request: object, seed: string },   // how it was made
+  tracks: Track[]
+}
+Track { id, kind: "video"|"audio", name, mute, solo, volume /* 0..4, linear */,
+        part?: string, generated: boolean,        // generated: a readout of the song renderer
+        clips: Clip[] }
+Clip  { id, start, duration,                      // duration is authoritative on the timeline
+        source: ClipSource, effects: Effect[], label?: string,
+        caption?: { text, words: [text, start, end][] } }   // word times in *source* seconds
+ClipSource =
+  { type: "corpus_clip", corpus, clip_id?, file?, word?, take?, in, out }  // file is relative to the corpus
+| { type: "media", asset, in, out }                                         // an uploaded asset id
+| { type: "synth", chip, notes: [{ start, dur, pitch, velocity }] }        // chip = a tone name
+| { type: "generated", kind: "ytp"|"ytpmv", prompt, options, seed, corpus? } // must be expanded before rendering (not yet possible)
+Effect = speed{factor} | stretch{factor} | reverse | pitch{semitones} | volume{db} | stutter
+       | mirror | glitch{name} | fade_in{seconds} | fade_out{seconds} | pause{seconds} | subword
+```
+
+Validation (422 with the reason): ids are 1–64 of `A-Za-z0-9_-` and unique; `start >= 0`,
+`duration > 0`, `in < out`; effect parameters in range (speed 0.1–10, stretch 0.1–16, pitch ±48,
+volume −80…+40 dB); at most 256 tracks and 50 000 clips; a synth clip lives on an audio track.
+
+Two kinds of project exist. A **sequence** (a sentence plan, or what the Studio edits) is video
+clips end to end on the video tracks, gaps filled with black and silence, and audio clips laid over
+it; overlapping *video* clips are refused for now. A **song** (`generator.kind = "ytpmv"`, tracks
+with `generated: true`) is a readout of the song renderer: one track per part, one clip per note.
+It is played by running the song renderer again with each track's mute/solo/volume put on its
+part; editing individual notes is not possible yet.
+
+| Method | Path | Body | Response | Permission |
+|---|---|---|---|---|
+| GET | /api/projects | – | `ProjectMeta[]` (owned and shared with you, newest first): `{ id, owner, owner_name, name, kind: "sequence"\|"song", duration, clips, revision, access: "owner"\|"write"\|"read", created_at, updated_at }` | project.read |
+| POST | /api/projects | `{ project, name? }` | `StoredProject` = `ProjectMeta` + `project` (422 if invalid; 409 at 200 projects; 16 MB limit) | project.write |
+| GET | /api/projects/:id | – | `StoredProject` (not yours and not shared: 404) | project.read |
+| PATCH | /api/projects/:id | `{ project?, name?, revision? }` | `StoredProject` with `revision + 1`; a `revision` that is not the stored one is 409 (lost update); a read-only share is 403 | project.write; owner or write share |
+| DELETE | /api/projects/:id | – | 204 | project.write; owner only (else 403) |
+| GET | /api/projects/:id/shares | – | `{ user_id, username, access: "read"\|"write" }[]` | project.share; owner only |
+| POST | /api/projects/:id/shares | `{ username, access: "read"\|"write" }` | the shares (unknown user, yourself, other access: 422) | project.share; owner only |
+| DELETE | /api/projects/:id/shares/:username | – | 204 | project.share; owner only |
+| POST | /api/projects/:id/render | – | `{ job_id }`: a `project` job (full quality, through the sentence renderer and the shared encoder, master kept for `/export`); a song project runs the song renderer | export.render; any access |
+| POST | /api/ytp/plan | the body of `/api/ytp/generate`, plus `save?: bool`, `name?` | `{ project, report }`; with `save`, `{ id, saved: StoredProject, report }` (needs project.write too). Nothing is rendered: the same text, voice and `options.seed` give the plan the job would render | generate.ytp |
+| POST | /api/ytpmv/plan | the body of `/api/ytpmv/render`, plus `save?`, `name?` | `{ project }` or `{ id, saved }`: one track per part, one clip per note | generate.ytpmv |
+| POST | /api/preview | `{ project_id } \| { project }`, `start?` (0), `duration?` (10, at most 30), `tracks?: [{ id, mute?, solo?, volume? }]` | the window as `video/mp4` (480p, H.264 + AAC); headers `X-Preview-Cache` (`hit`\|`miss`), `X-Preview-Ms`, `X-Preview-Info` (JSON: kind, clips, proxied...). A window after the end of the project is 422; the end is cut | studio.use (+ project.read for `project_id`) |
+
+Sharing: the owner (with project.share) gives another user `read` or `write`; the project then
+appears in their list. A project that is not yours and not shared with you is a 404, for admins too.
+`write` lets someone PATCH it (they still need project.write); only the owner deletes or re-shares.
+Sharing changes and deletes are in the audit log (`project.share`, `project.unshare`,
+`project.delete`). A sharee who renders a project runs it as their own job; a song plays from the
+*owner's* MIDI library.
+
+### Preview
+
+`POST /api/preview` is one request, one finished window, no streaming: the client asks for aligned
+8 s windows, plays the current one and fetches the next into a second `<video>`, swapping at the
+seam (the Studio does this: `web/src/lib/components/studio/PreviewPane.svelte`). Sequence projects
+render the window's clips in one fast ffmpeg call (ultrafast H.264, CRF 30, only the window kept)
+on top of preview proxies: the first preview of a source reads the original, and an all-intra 480p
+copy (`preview-proxy` preset, sources up to 30 min, LRU-capped at 2 GB under
+`<data>/cache/proxy`) is built in the background for the ones after. Song projects play only the
+window through the song mixer and decode only the takes the window shows. Finished windows are
+cached on disk (`<data>/cache/preview`, 256 MB, keyed by the clips inside the window, the mixer,
+the corpus versions and the window), so replays and re-scrubs are instant and edits elsewhere in a
+project do not invalidate them. At most three previews render at once; previews are not counted
+against `requests_per_minute`.
+
 ## WebSocket `/api/ws`
 
 Authenticated by the session cookie (or `?token=` bearer secret). Origin is checked: a browser
@@ -239,6 +316,42 @@ Server → client: `hello { user, permissions }`, `pong`, `job { id: string, sta
 `corpus { event: installed|removed, name }` (sent to everyone with corpus.read), `error { message }`.
 Client → server: `ping` → `pong`; `subscribe { topic }` / `unsubscribe { topic }`.
 Topics: `job:<id>` (that job, if yours or you have jobs.view_all), `jobs` (all jobs visible to you).
+
+## Chat bots
+
+`ytp-machine serve` runs a Matrix and/or Discord bot in the same process when the environment
+configures one (setup: README, "Chat bots"). The bots are not an HTTP API; they call the job
+manager, MIDI library and encoder directly as a *service account*. Jobs they start are owned by
+that account (so they show up under it in `/api/jobs/:id`, subject to its quota), while what the
+chat person may ask for is decided separately by the app role their chat identity maps to.
+
+Environment (all optional; a platform is on when its credentials are set, or forced with
+`YTP_MATRIX_BOT=1|0` / `YTP_DISCORD_BOT=1|0`):
+
+| Variable | Meaning |
+|---|---|
+| `YTP_BOT_USER` | service account the bots run jobs as (default `bot`; must exist, e.g. `user create bot --role creator`) |
+| `YTP_BOT_DEFAULT_ROLE` | role for allowed chat users with no mapping (default `guest`) |
+| `YTP_BOT_PREFIX` | text-command prefix (default `!ytp`) |
+| `YTP_BOT_MV_MAX_SECONDS` | longest song a chat command may make (default 120) |
+| `YTP_MATRIX_HOMESERVER`, `YTP_MATRIX_USER` | `https://matrix.example.org`, `@ytp:example.org` |
+| `YTP_MATRIX_PASSWORD` \| `YTP_MATRIX_TOKEN` | password login (session kept in `<data>/matrix/session.json`) or an access token |
+| `YTP_MATRIX_ROOMS`, `YTP_MATRIX_USERS` | allow-lists (room ids; user ids, `*:server` for a whole server). Invites are accepted only from allowed users/rooms |
+| `YTP_MATRIX_PREFIX`, `YTP_MATRIX_DEVICE_NAME` | prefix override; device name for a password login |
+| `YTP_DISCORD_TOKEN` | bot token |
+| `YTP_DISCORD_GUILDS`, `YTP_DISCORD_CHANNELS`, `YTP_DISCORD_USERS` | allow-lists (ids); any match is enough |
+| `YTP_DISCORD_ROLES` | `discord-role-id=app-role,...` mapping |
+| `YTP_DISCORD_DEFAULT_ROLE`, `YTP_DISCORD_PREFIX` | role / prefix overrides |
+| `YTP_DISCORD_PREFIX_COMMANDS` | also answer `!ytp ...` messages (needs the Message Content intent) |
+| `YTP_DISCORD_MESSAGE_CONTENT` | ask for the Message Content intent so MIDI files posted in a channel are remembered |
+
+Commands: `say`, `mv`, `mv info`, `voices`, `voice <name>`, `queue`, `help` — as `!ytp <command>`
+on Matrix, and as slash commands on Discord (`/ytp say text [subs]`, `/ytp mv [midi] [parts]
+[max]`, `/ytp mv-info [midi]`, `/ytp voices`, `/ytp voice name`, `/ytp queue`, `/ytp help`).
+Results are encoded with the `matrix` preset, or `discord-10mb` / `discord-25mb` / `discord-50mb`
+by the guild's boost tier. Permissions needed by the chat user's mapped role: `say` generate.ytp;
+`mv` generate.ytpmv + export.render; `mv info` generate.ytpmv; `voices` corpus.read; `voice`
+corpus.edit (the bots share one voice, in memory, reset on restart).
 
 ## Binary
 

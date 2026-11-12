@@ -4,5 +4,6 @@ pub mod corpora;
 pub mod encode;
 pub mod jobs;
 pub mod misc;
+pub mod projects;
 pub mod tokens;
 pub mod ytpmv;

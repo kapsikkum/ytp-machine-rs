@@ -500,3 +500,68 @@ async fn only_the_costly_routes_count_against_requests_per_minute() {
     let r = t.call(Method::DELETE, &format!("/api/ytpmv/midi/{id}"), &u, None).await;
     assert_eq!(r.status, StatusCode::NO_CONTENT, "{:?}", r.body);
 }
+/// The chat bots' side of the server: a MIDI file through the service account,
+/// a song and a sentence through the real job manager, and the encoded upload.
+#[tokio::test]
+async fn chat_backend_sings_says_and_encodes() {
+    use std::sync::{Arc, Mutex};
+    use ytp_bot::{BotBackend, JobProgress, MidiFile, PartChoice};
+    use ytp_server::bots::ServerBackend;
+
+    if !have_ffmpeg() {
+        eprintln!("ffmpeg is not on PATH; skipping");
+        return;
+    }
+    let (t, admin) = setup().await;
+    t.create_user(&admin, "bot", &["creator"]).await;
+    let backend = ServerBackend::new(t.st.clone());
+
+    assert!(backend.service_identity("nobody").await.is_err());
+    let service = backend.service_identity("bot").await.unwrap();
+    assert!(service.has(ytp_auth::Permission::GenerateYtpmv));
+    let (perms, _) = backend.grants(&["guest".to_string()]).await.unwrap();
+    assert!(perms.contains(&ytp_auth::Permission::GenerateYtp));
+    assert!(!perms.contains(&ytp_auth::Permission::GenerateYtpmv));
+
+    let voices = backend.list_voices().await.unwrap();
+    assert_eq!(voices.len(), 1);
+    assert!(voices[0].active && voices[0].name == "music");
+    assert!(backend.switch_voice(&service, "nope").await.is_err());
+    assert_eq!(backend.switch_voice(&service, "music").await.unwrap().name, "music");
+
+    // A song: describe it, change a part, wait for the render, encode it.
+    let midi = MidiFile { name: "Chat Song.mid".into(), bytes: song_midi() };
+    let info = backend.ytpmv_info(&service, &midi, None).await.unwrap();
+    assert_eq!(info.title, "Chat Song");
+    assert_eq!(info.parts.len(), 5);
+    assert!(info.parts.iter().all(|p| p.text.is_some()), "{:?}", info.parts);
+    let lead = info.parts.iter().find(|p| p.role.ends_with("lead")).unwrap_or(&info.parts[0]);
+
+    let part = PartChoice { id: lead.id.clone(), settings: json!({ "text": "boom" }) };
+    let job = backend
+        .start_ytpmv(&service, &midi, &[part], &json!({ "max_seconds": 4 }), None)
+        .await
+        .unwrap();
+    let seen: Arc<Mutex<Vec<JobProgress>>> = Arc::default();
+    let sink = seen.clone();
+    let done = backend
+        .wait_job(&job, &move |p: &JobProgress| sink.lock().unwrap().push(p.clone()))
+        .await
+        .unwrap();
+    assert!(!seen.lock().unwrap().is_empty());
+    assert_eq!(seen.lock().unwrap().last().unwrap().state, "done");
+    assert!(done.report["parts"].is_array(), "{}", done.report);
+    let file = backend.encode_result(&service, &job, "matrix").await.unwrap();
+    assert!(file.path.is_file() && file.bytes > 0, "{file:?}");
+    assert_eq!(file.mime, "video/mp4");
+    backend.release(&file).await;
+    assert!(!file.path.exists());
+
+    // A sentence.
+    let job = backend.start_ytp(&service, "oh no", true, None).await.unwrap();
+    let done = backend.wait_job(&job, &|_: &JobProgress| {}).await.unwrap();
+    assert!(done.duration.unwrap_or(0.0) > 0.0);
+    assert!(backend.queue_status().await.is_ok());
+    assert!(backend.start_ytp(&service, "   ", true, None).await.is_err());
+    assert!(backend.start_ytp(&service, "oh", true, Some("nope")).await.is_err());
+}

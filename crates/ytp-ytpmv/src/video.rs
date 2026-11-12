@@ -6,7 +6,7 @@
 //! the sentence renderer already found where "one ffmpeg input per clip"
 //! ends: out of file handles well before a single verse.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::io::{Read, Write};
 use std::path::Path;
 use std::process::{Command, Stdio};
@@ -133,7 +133,12 @@ fn filter_chain(prep: &Prepared, font: Option<&str>) -> String {
 }
 
 /// Decode every tile's picture(s), a few at a time.
-fn load_frames(prep: &Prepared, env: &Env, progress: Progress) -> Result<HashMap<String, Vec<Frames>>> {
+fn load_frames(
+    prep: &Prepared,
+    env: &Env,
+    progress: Progress,
+    needed: Option<&HashSet<(String, usize)>>,
+) -> Result<HashMap<String, Vec<Frames>>> {
     let jobs: Vec<(&Tile, usize)> = prep
         .tiles
         .iter()
@@ -154,6 +159,12 @@ fn load_frames(prep: &Prepared, env: &Env, progress: Progress) -> Result<HashMap
                 }
                 let (tile, k) = jobs[i];
                 let (_, _, w, h) = tile.cell;
+                if needed.is_some_and(|n| !n.contains(&(tile.id.clone(), k))) {
+                    // A take nothing in the window plays: a black stand-in keeps the indices.
+                    done.fetch_add(1, Ordering::Relaxed);
+                    results.lock().unwrap()[i] = Some(Ok(Frames { n: 1, w, h, data: vec![0; w * h * 3] }));
+                    continue;
+                }
                 let (_, _, ow, oh) = tile.out_cell;
                 let pixel_aspect = (ow as f64 / w as f64) / (oh as f64 / h as f64);
                 let keep = || progress("tiles", done.load(Ordering::Relaxed), total);
@@ -184,12 +195,49 @@ pub fn render_video(
     out: &Path,
     progress: Progress,
 ) -> Result<()> {
+    render_frames(prep, mixed, env, font, encoder, out, progress, false)
+}
+
+/// The picture of `prep`'s window (it starts at `prep.t_from`) and its mix as
+/// one small fast MP4 at `out`: for looking at, not keeping. Only the takes
+/// the window plays are decoded, and nothing is finished or mastered.
+pub fn render_preview(prep: &Prepared, mixed: &Mixed, env: &Env, font: Option<&str>, out: &Path, progress: Progress) -> Result<()> {
+    render_frames(prep, mixed, env, font, None, out, progress, true)
+}
+
+/// The takes of each tile that the window `prep.t_from..prep.t_end` shows.
+fn takes_in_window(prep: &Prepared, mixed: &Mixed) -> HashSet<(String, usize)> {
+    let mut needed = HashSet::new();
+    for tile in &prep.tiles {
+        let Some(takes) = prep.sample_of.get(&tile.id).map(Vec::len).filter(|n| *n > 0) else { continue };
+        needed.insert((tile.id.clone(), 0));
+        let hits = mixed.hits.get(&tile.id).map(Vec::as_slice).unwrap_or(&[]);
+        let before = hits.partition_point(|h| h.start <= prep.t_from).saturating_sub(1);
+        for h in hits[before..].iter().take_while(|h| h.start < prep.t_end) {
+            needed.insert((tile.id.clone(), h.take % takes));
+        }
+    }
+    needed
+}
+
+fn render_frames(
+    prep: &Prepared,
+    mixed: &Mixed,
+    env: &Env,
+    font: Option<&str>,
+    encoder: Option<&ytp_encode::Encoder>,
+    out: &Path,
+    progress: Progress,
+    preview: bool,
+) -> Result<()> {
     let (cw, ch) = prep.canvas;
     let screen_name = prep.opts.screen();
     let retro = screen_name != "none";
-    let master = ytp_media::master_path(out);
+    // A preview is written straight to `out`; a render makes a master first.
+    let master = if preview { out.to_path_buf() } else { ytp_media::master_path(out) };
     say(progress, "tiles", 0, 1)?;
-    let frames_of = load_frames(prep, env, progress)?;
+    let needed = preview.then(|| takes_in_window(prep, mixed));
+    let frames_of = load_frames(prep, env, progress, needed.as_ref())?;
     let starts_of: HashMap<&str, Vec<f64>> =
         prep.tiles.iter().map(|t| (t.id.as_str(), mixed.hits.get(&t.id).map(|h| h.iter().map(|x| x.start).collect()).unwrap_or_default())).collect();
     let empty: Vec<Hit> = Vec::new();
@@ -207,8 +255,13 @@ pub fn render_video(
     cmd.args(["-y", "-v", "error", "-f", "rawvideo", "-pix_fmt", "rgb24", "-s", &format!("{cw}x{ch}"), "-r", &FPS.to_string(), "-i", "-"]);
     cmd.arg("-i").arg(&wav_path);
     cmd.args(["-map", "0:v", "-map", "1:a", "-vf", &filter_chain(prep, font)]);
-    cmd.args(["-c:v", "libx264", "-preset", "veryfast", "-crf", if retro { "16" } else { "23" }]);
-    cmd.args(["-c:a", "aac", "-b:a", "192k", "-ar", &crate::SR.to_string(), "-ac", "2", "-shortest", "-movflags", "+faststart"]);
+    if preview {
+        cmd.args(["-c:v", "libx264", "-preset", "ultrafast", "-tune", "zerolatency", "-g", "25", "-crf", "30"]);
+        cmd.args(["-c:a", "aac", "-b:a", "96k", "-ar", &crate::SR.to_string(), "-ac", "2", "-shortest", "-movflags", "+faststart"]);
+    } else {
+        cmd.args(["-c:v", "libx264", "-preset", "veryfast", "-crf", if retro { "16" } else { "23" }]);
+        cmd.args(["-c:a", "aac", "-b:a", "192k", "-ar", &crate::SR.to_string(), "-ac", "2", "-shortest", "-movflags", "+faststart"]);
+    }
     cmd.arg(&master);
     cmd.stdin(Stdio::piped()).stdout(Stdio::null()).stderr(Stdio::piped());
     #[cfg(windows)]
@@ -237,7 +290,7 @@ pub fn render_video(
             result = Err(Error::Cancelled);
             break;
         }
-        let t = f as f64 / FPS as f64;
+        let t = prep.t_from + f as f64 / FPS as f64;
         let mut moved = !prep.chip_parts.is_empty();
         for (i, tile) in prep.tiles.iter().enumerate() {
             let (x0, y0, tw, th) = tile.cell;
@@ -321,6 +374,9 @@ pub fn render_video(
         Ok(()) => {
             if !master.is_file() {
                 return msg("the encoder produced no video");
+            }
+            if preview {
+                return Ok(());
             }
             finish_encode(prep, env, encoder, &master, out, progress)
         }

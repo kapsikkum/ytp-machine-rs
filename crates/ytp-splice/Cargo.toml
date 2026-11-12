@@ -6,6 +6,7 @@ license.workspace = true
 publish.workspace = true
 
 [dependencies]
+ytp-core = { workspace = true }
 ytp-text = { path = "../ytp-text" }
 ytp-corpus = { path = "../ytp-corpus" }
 indexmap = "2"

@@ -2,11 +2,13 @@
 //! `/api/ws`, and the embedded SvelteKit UI for everything else.
 
 pub mod auth;
+pub mod bots;
 pub mod config;
 pub mod encode;
 pub mod error;
 pub mod handlers;
 pub mod jobs;
+pub mod projects;
 pub mod routes;
 pub mod state;
 pub mod throttle;

@@ -79,6 +79,11 @@ pub struct Segment {
     pub reverse: bool,
     pub pitch: Option<f64>,
     pub gain_db: Option<f64>,
+    /// Playback speed of this segment alone; `None` follows the options.
+    pub speed: Option<f64>,
+    /// Exact length on the timeline, replacing the computed one (set when
+    /// a segment is read back from a project, whose clips carry their length).
+    pub length: Option<f64>,
     pub glitch: Vec<String>,
     pub subtitle: Option<String>,
     pub subtitle_words: Vec<(String, f64, f64)>,

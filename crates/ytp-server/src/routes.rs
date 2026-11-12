@@ -10,7 +10,7 @@ use axum::routing::{on, MethodFilter, MethodRouter};
 use axum::Router;
 use ytp_auth::Permission::{self, *};
 
-use crate::handlers::{admin, auth, corpora, encode, jobs, misc, tokens, ytpmv};
+use crate::handlers::{admin, auth, corpora, encode, jobs, misc, projects, tokens, ytpmv};
 use crate::{ws, AppState};
 
 /// Who may call a route.
@@ -160,6 +160,16 @@ impl<'a> ApiBuilder<'a> {
         self.add(Some(Method::POST), p, a, h, Some(limit))
     }
 
+    pub fn patch_large<H: Handler<T, AppState>, T: 'static>(
+        self,
+        p: &'static str,
+        a: Access,
+        h: H,
+        limit: usize,
+    ) -> Self {
+        self.add(Some(Method::PATCH), p, a, h, Some(limit))
+    }
+
     pub fn finish(self) -> (Router<AppState>, Vec<RouteSpec>) {
         (self.router, self.specs)
     }
@@ -206,6 +216,7 @@ pub fn api(state: &AppState) -> (Router<AppState>, Vec<RouteSpec>) {
         )
         .get("/api/admin/audit", Perm(AuditView), admin::audit)
         .get("/api/admin/encoders", Perm(SettingsManage), encode::encoders)
+        .get("/api/admin/bots", Perm(SettingsManage), crate::bots::status)
         // tokens
         .get("/api/tokens", Perm(TokensCreate), tokens::list)
         .post("/api/tokens", Perm(TokensCreate), tokens::create)
@@ -251,21 +262,19 @@ pub fn api(state: &AppState) -> (Router<AppState>, Vec<RouteSpec>) {
         .post("/api/ytpmv/preview", Perm(GenerateYtpmv), ytpmv::preview)
         .post("/api/ytpmv/preview-mix", Perm(GenerateYtpmv), ytpmv::preview_mix)
         .post("/api/ytpmv/render", Perm(GenerateYtpmv), ytpmv::render)
-        .any(
-            "/api/projects",
-            ReadWrite {
-                read: ProjectRead,
-                write: ProjectWrite,
-            },
-            misc::not_implemented,
-        )
-        .any(
-            "/api/projects/{*rest}",
-            ReadWrite {
-                read: ProjectRead,
-                write: ProjectWrite,
-            },
-            misc::not_implemented,
-        )
+        // timeline projects: owned, shareable, played by the preview and the render job
+        .get("/api/projects", Perm(ProjectRead), projects::list)
+        .post_large("/api/projects", Perm(ProjectWrite), projects::create, crate::projects::MAX_PROJECT_BYTES + (1 << 20))
+        .get("/api/projects/{id}", Perm(ProjectRead), projects::get)
+        .patch_large("/api/projects/{id}", Perm(ProjectWrite), projects::update, crate::projects::MAX_PROJECT_BYTES + (1 << 20))
+        .delete("/api/projects/{id}", Perm(ProjectWrite), projects::delete)
+        .get("/api/projects/{id}/shares", Perm(ProjectShare), projects::shares)
+        .post("/api/projects/{id}/shares", Perm(ProjectShare), projects::share)
+        .delete("/api/projects/{id}/shares/{name}", Perm(ProjectShare), projects::unshare)
+        .post("/api/projects/{id}/render", Perm(ExportRender), projects::render)
+        // a generator's plan as a project, and a low-res render of a time window
+        .post("/api/ytp/plan", Perm(GenerateYtp), projects::plan_ytp)
+        .post("/api/ytpmv/plan", Perm(GenerateYtpmv), projects::plan_ytpmv)
+        .post("/api/preview", Perm(StudioUse), projects::preview)
         .finish()
 }

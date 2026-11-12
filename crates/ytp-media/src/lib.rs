@@ -86,6 +86,29 @@ pub trait Renderer: Send + Sync {
     fn wait_idle(&self, _timeout: Duration) {}
 }
 
+/// A quick, low-quality render of one stretch of a sequence, for previews:
+/// all the segments in one ffmpeg call, a fast encode, and only
+/// `skip..skip + length` of the result kept.
+#[derive(Debug, Clone)]
+pub struct Quick {
+    pub skip: f64,
+    pub length: f64,
+    pub crf: u32,
+}
+
+/// Most segments a quick render takes (one decoder each, one command line).
+pub const QUICK_MAX_SEGMENTS: usize = 96;
+
+impl Quick {
+    pub fn encoder_args(&self) -> Vec<String> {
+        ["-c:v", "libx264", "-preset", "ultrafast", "-tune", "zerolatency", "-g", "25", "-crf"]
+            .iter()
+            .map(|s| s.to_string())
+            .chain(std::iter::once(self.crf.to_string()))
+            .collect()
+    }
+}
+
 pub struct FfmpegRenderer {
     tools: Tools,
     /// `-/filter_complex` (ffmpeg 7+) works; otherwise `-filter_complex_script`.
@@ -144,12 +167,14 @@ impl FfmpegRenderer {
     }
 
     /// One ffmpeg call for one chunk of segments.
+    #[allow(clippy::too_many_arguments)]
     fn encode_chunk(
         &self,
         job: &RenderJob,
         segments: &[Segment],
         out: &Path,
         final_tail: bool,
+        quick: Option<&Quick>,
         progress: ProgressFn,
         stage: (&str, usize, usize),
     ) -> Result<(), RenderError> {
@@ -185,7 +210,13 @@ impl FfmpegRenderer {
             }
             a.extend([flag.to_string(), script.display().to_string()]);
             a.extend(["-map", "[vout]", "-map", "[aout]"].map(String::from));
-            a.extend(self.tools.encoder_args());
+            match quick {
+                Some(q) => {
+                    a.extend(q.encoder_args());
+                    a.extend(["-ss".to_string(), format!("{:.4}", q.skip), "-t".into(), format!("{:.4}", q.length)]);
+                }
+                None => a.extend(self.tools.encoder_args()),
+            }
             // Always 4:2:0: colour effects hand the encoder RGB, x264 then
             // writes 4:4:4, and Firefox calls that file corrupt.
             a.extend(
@@ -208,6 +239,44 @@ impl FfmpegRenderer {
             let _ = std::fs::remove_file(out);
         }
         res
+    }
+
+    /// Render `segments` (at most [`QUICK_MAX_SEGMENTS`]) to `out` as one fast
+    /// MP4, keeping only the stretch `quick` names. Nothing is finished or
+    /// kept: it is for looking at.
+    #[allow(clippy::too_many_arguments)]
+    pub fn render_quick(
+        &self,
+        segments: &[Segment],
+        options: &GenerationOptions,
+        captions: bool,
+        audio: &AudioCache,
+        out: &Path,
+        quick: &Quick,
+        progress: ProgressFn,
+    ) -> Result<(), RenderError> {
+        if segments.is_empty() {
+            return Err(RenderError::Failed("nothing to render".into()));
+        }
+        if segments.len() > QUICK_MAX_SEGMENTS {
+            return Err(RenderError::Failed(format!(
+                "{} clips in one preview window is too many (at most {QUICK_MAX_SEGMENTS})",
+                segments.len()
+            )));
+        }
+        self.tools.version().map_err(RenderError::Unavailable)?;
+        let job = RenderJob {
+            segments,
+            options,
+            captions,
+            out,
+            audio,
+            max_height: 0,
+            encoder: None,
+            finish: false,
+            cancel: None,
+        };
+        self.encode_chunk(&job, segments, out, true, Some(quick), progress, ("encoding", 0, 1))
     }
 
     fn build_video(&self, job: &RenderJob, progress: ProgressFn) -> Result<(), RenderError> {
@@ -234,7 +303,7 @@ impl FfmpegRenderer {
 
         if chunks.len() == 1 {
             say("encoding", 0, 1)?;
-            self.encode_chunk(job, chunks[0], &master, true, progress, ("encoding", 0, 1))?;
+            self.encode_chunk(job, chunks[0], &master, true, None, progress, ("encoding", 0, 1))?;
             say("encoding", 1, 1)?;
             return self.finish_output(job, &master, progress);
         }
@@ -251,6 +320,7 @@ impl FfmpegRenderer {
                     chunk,
                     &parts[ci],
                     ci == chunks.len() - 1,
+                    None,
                     progress,
                     ("encoding", ci, chunks.len()),
                 )?;

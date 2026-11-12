@@ -221,6 +221,13 @@ impl Jobs {
         self.inner.lock().unwrap().map.get(id).map(|e| e.rec.clone())
     }
 
+    /// How many jobs are running and how many are waiting.
+    pub fn counts(&self) -> (usize, usize) {
+        let g = self.inner.lock().unwrap();
+        let running = g.map.values().filter(|e| e.rec.state == JobState::Running).count();
+        (running, g.queue.len())
+    }
+
     /// Is an unfinished render of `owner` playing MIDI file `midi_id`?
     pub fn midi_in_use(&self, owner: i64, midi_id: &str) -> bool {
         self.inner.lock().unwrap().map.values().any(|e| {
@@ -586,6 +593,9 @@ async fn run(st: &AppState, id: &str, cancel: Arc<AtomicBool>) -> Outcome {
     }
     if rec.kind.as_deref() == Some("encode") {
         return crate::encode::run(st, id, &rec, quota, cancel).await;
+    }
+    if rec.kind.as_deref() == Some("project") {
+        return crate::projects::run(st, id, &rec, quota, cancel).await;
     }
 
     st.jobs.set_progress(id, 0.0, "loading the corpus".into());

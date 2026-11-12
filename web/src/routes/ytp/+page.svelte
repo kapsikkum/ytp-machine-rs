@@ -146,9 +146,27 @@
     void generate();
   }
 
-  function openInStudio() {
-    const q = new URLSearchParams({ mode: 'ytp', prompt: text });
-    void goto('/?' + q.toString());
+  // The finished result's plan becomes a project (same words, same seed, so
+  // the same clips) and the Studio opens on it; with no result yet, or no
+  // right to keep projects, the Studio gets the sentence as a prompt instead.
+  let opening = $state(false);
+  async function openInStudio() {
+    const j = job;
+    if (!j || j.state !== 'done' || !$can('project.write')) {
+      const q = new URLSearchParams({ mode: 'ytp', prompt: text });
+      void goto('/?' + q.toString());
+      return;
+    }
+    opening = true;
+    try {
+      const r = await api.ytp.plan({ text: j.text, voice: j.voice, captions: j.captions, options: j.options, save: true });
+      await goto(`/?project=${r.id}`);
+    } catch (e) {
+      statusError = true;
+      status = errorText(e);
+    } finally {
+      opening = false;
+    }
   }
 
   const stats = $derived.by(() => {
@@ -170,7 +188,7 @@
         <button type="button" class="ghost" onclick={cancel} title="Stop this job">Cancel</button>
       {/if}
       {#if $can('studio.use')}
-        <button type="button" class="ghost" onclick={openInStudio} title="Continue this sentence on the Studio timeline">Open in Studio</button>
+        <button type="button" class="ghost" disabled={opening} onclick={openInStudio} title="Continue this sentence on the Studio timeline">{opening ? 'Opening…' : 'Open in Studio'}</button>
       {/if}
     {/snippet}
   </Composer>

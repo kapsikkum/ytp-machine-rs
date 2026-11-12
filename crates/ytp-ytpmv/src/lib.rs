@@ -3,9 +3,9 @@
 //! This is the half of `app/ytpmv` that is not synthesis (that lives in
 //! `ytp-music`): corpus words cut into instruments (`samples`), the choice of
 //! which word plays which part (`recommend`), per-part settings
-//! (`settings`), the in-process audio mix (`mix`) and the picture — a grid of
+//! (`settings`), the in-process audio mix (`mix`) and the picture â€” a grid of
 //! clips or oscilloscopes, optionally put through a console's palette
-//! (`video`, `layout`, `screen`, `scope`) — piped into one ffmpeg.
+//! (`video`, `layout`, `screen`, `scope`) â€” piped into one ffmpeg.
 //!
 //! Sound is built entirely in-process; ffmpeg is only used to decode source
 //! audio/video and to encode the finished video.
@@ -15,6 +15,7 @@
 pub mod decode;
 pub mod layout;
 pub mod mix;
+pub mod plan;
 pub mod recommend;
 pub mod samples;
 pub mod scope;

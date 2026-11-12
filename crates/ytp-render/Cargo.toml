@@ -1,0 +1,21 @@
+[package]
+name = "ytp-render"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "Plays a timeline project: the full-quality render through the sentence renderer and the shared encoder, and a quick low-res preview of a time window."
+
+[dependencies]
+ytp-core = { workspace = true }
+ytp-splice = { path = "../ytp-splice" }
+ytp-media = { path = "../ytp-media" }
+ytp-encode = { path = "../ytp-encode" }
+ytp-music = { path = "../ytp-music" }
+serde_json = { workspace = true }
+sha2 = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }

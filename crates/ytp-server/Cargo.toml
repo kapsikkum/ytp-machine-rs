@@ -13,6 +13,12 @@ path = "src/lib.rs"
 name = "ytp-machine"
 path = "src/main.rs"
 
+[features]
+default = ["matrix", "discord"]
+# The chat bots; turn either off to shrink the binary.
+matrix = ["ytp-bot/matrix"]
+discord = ["ytp-bot/discord"]
+
 [dependencies]
 ytp-core = { workspace = true }
 ytp-auth = { workspace = true }
@@ -23,6 +29,9 @@ ytp-media = { path = "../ytp-media" }
 ytp-music = { path = "../ytp-music" }
 ytp-ytpmv = { path = "../ytp-ytpmv" }
 ytp-encode = { path = "../ytp-encode" }
+ytp-render = { path = "../ytp-render" }
+ytp-bot = { path = "../ytp-bot", default-features = false }
+async-trait = { workspace = true }
 anyhow = { workspace = true }
 axum = { workspace = true }
 clap = { workspace = true }

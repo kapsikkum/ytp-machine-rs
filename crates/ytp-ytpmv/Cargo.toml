@@ -7,6 +7,7 @@ publish.workspace = true
 description = "YTPMV orchestration: corpus words as instruments, song rendering, recommendations and the video grid (port of app/ytpmv/{samples,render,recommend,screen,scope}.py)."
 
 [dependencies]
+ytp-core = { workspace = true }
 ytp-music = { path = "../ytp-music" }
 ytp-splice = { path = "../ytp-splice" }
 ytp-corpus = { path = "../ytp-corpus" }
@@ -17,3 +18,4 @@ sha2 = { workspace = true }
 tracing = { workspace = true }
 
 [dev-dependencies]
+tempfile = { workspace = true }
