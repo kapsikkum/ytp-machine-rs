@@ -1,0 +1,422 @@
+{
+ "bpm": 120.0,
+ "description": "Upbeat (120 BPM), D minor, dark, 0:04 long: synth lead, ensemble, piano, bass, 4 drum sounds.",
+ "duration": 3.6,
+ "key": "D minor",
+ "key_confidence": 0.8996891829193662,
+ "parts": [
+  {
+   "channel": 0,
+   "common_midi": 74,
+   "first": 0.0,
+   "id": "t1c0",
+   "instrument": "Square Lead",
+   "is_drums": false,
+   "median_midi": 76.0,
+   "name": "Square Lead (lead)",
+   "notes": 11,
+   "notes_head": [
+    [
+     0.0,
+     0.25,
+     74,
+     90
+    ],
+    [
+     0.25,
+     0.25,
+     77,
+     90
+    ],
+    [
+     0.5,
+     0.5,
+     81,
+     90
+    ],
+    [
+     1.0,
+     0.25,
+     79,
+     90
+    ],
+    [
+     1.25,
+     0.25,
+     77,
+     90
+    ],
+    [
+     1.5,
+     0.5,
+     74,
+     90
+    ]
+   ],
+   "pan": -0.69,
+   "polyphony": 1,
+   "program": 80,
+   "range": [
+    "C5",
+    "A5"
+   ],
+   "range_midi": [
+    72,
+    81
+   ],
+   "role": "lead",
+   "track": 1,
+   "typical_polyphony": 1.0
+  },
+  {
+   "channel": 2,
+   "common_midi": 53,
+   "first": 0.0,
+   "id": "t3c2",
+   "instrument": "String Ensemble 1",
+   "is_drums": false,
+   "median_midi": 57.0,
+   "name": "String Ensemble 1 (chords)",
+   "notes": 12,
+   "notes_head": [
+    [
+     0.0,
+     0.9375,
+     50,
+     90
+    ],
+    [
+     0.0,
+     0.9375,
+     53,
+     90
+    ],
+    [
+     0.0,
+     0.9375,
+     57,
+     90
+    ],
+    [
+     1.0,
+     0.9375,
+     53,
+     90
+    ],
+    [
+     1.0,
+     0.9375,
+     56,
+     90
+    ],
+    [
+     1.0,
+     0.9375,
+     60,
+     90
+    ]
+   ],
+   "pan": null,
+   "polyphony": 3,
+   "program": 48,
+   "range": [
+    "D3",
+    "E4"
+   ],
+   "range_midi": [
+    50,
+    64
+   ],
+   "role": "chords",
+   "track": 3,
+   "typical_polyphony": 3.0
+  },
+  {
+   "channel": 3,
+   "common_midi": 60,
+   "first": 0.0,
+   "id": "t4c3",
+   "instrument": "Acoustic Grand Piano",
+   "is_drums": false,
+   "median_midi": 60.0,
+   "name": "Acoustic Grand Piano (rhythm)",
+   "notes": 1,
+   "notes_head": [
+    [
+     0.0,
+     0.0,
+     60,
+     70
+    ]
+   ],
+   "pan": null,
+   "polyphony": 0,
+   "program": 0,
+   "range": [
+    "C4",
+    "C4"
+   ],
+   "range_midi": [
+    60,
+    60
+   ],
+   "role": "rhythm",
+   "track": 4,
+   "typical_polyphony": 0.0
+  },
+  {
+   "channel": 1,
+   "common_midi": 38,
+   "first": 0.0,
+   "id": "t2c1",
+   "instrument": "Fingered Bass",
+   "is_drums": false,
+   "median_midi": 38.0,
+   "name": "Fingered Bass (bass)",
+   "notes": 7,
+   "notes_head": [
+    [
+     0.0,
+     0.5,
+     38,
+     90
+    ],
+    [
+     0.5,
+     0.5,
+     45,
+     90
+    ],
+    [
+     1.0,
+     0.5,
+     38,
+     90
+    ],
+    [
+     1.5,
+     0.5,
+     45,
+     90
+    ],
+    [
+     2.0,
+     0.3999999999999999,
+     36,
+     90
+    ],
+    [
+     2.4,
+     0.3999999999999999,
+     43,
+     90
+    ]
+   ],
+   "pan": 0.0,
+   "polyphony": 1,
+   "program": 33,
+   "range": [
+    "C2",
+    "A2"
+   ],
+   "range_midi": [
+    36,
+    45
+   ],
+   "role": "bass",
+   "track": 2,
+   "typical_polyphony": 1.0
+  },
+  {
+   "channel": 9,
+   "common_midi": 36,
+   "first": 0.0,
+   "id": "t5c9-kick",
+   "instrument": "Kick drum",
+   "is_drums": true,
+   "median_midi": 36.0,
+   "name": "kick",
+   "notes": 4,
+   "notes_head": [
+    [
+     0.0,
+     0.0625,
+     36,
+     100
+    ],
+    [
+     1.0,
+     0.0625,
+     36,
+     100
+    ],
+    [
+     2.0,
+     0.04999999999999982,
+     36,
+     100
+    ],
+    [
+     2.8,
+     0.050000000000000266,
+     36,
+     100
+    ]
+   ],
+   "pan": null,
+   "polyphony": 1,
+   "program": null,
+   "range": null,
+   "range_midi": [
+    36,
+    36
+   ],
+   "role": "drums:kick",
+   "track": 5,
+   "typical_polyphony": 1.0
+  },
+  {
+   "channel": 9,
+   "common_midi": 38,
+   "first": 0.5,
+   "id": "t5c9-snare",
+   "instrument": "Snare",
+   "is_drums": true,
+   "median_midi": 38.0,
+   "name": "snare",
+   "notes": 4,
+   "notes_head": [
+    [
+     0.5,
+     0.0625,
+     38,
+     100
+    ],
+    [
+     1.5,
+     0.0625,
+     38,
+     100
+    ],
+    [
+     2.4,
+     0.050000000000000266,
+     38,
+     100
+    ],
+    [
+     3.2,
+     0.04999999999999982,
+     38,
+     100
+    ]
+   ],
+   "pan": null,
+   "polyphony": 1,
+   "program": null,
+   "range": null,
+   "range_midi": [
+    38,
+    38
+   ],
+   "role": "drums:snare",
+   "track": 5,
+   "typical_polyphony": 1.0
+  },
+  {
+   "channel": 9,
+   "common_midi": 42,
+   "first": 0.25,
+   "id": "t5c9-hats",
+   "instrument": "Hi-hats",
+   "is_drums": true,
+   "median_midi": 42.0,
+   "name": "hats",
+   "notes": 8,
+   "notes_head": [
+    [
+     0.25,
+     0.0625,
+     42,
+     100
+    ],
+    [
+     0.75,
+     0.0625,
+     42,
+     100
+    ],
+    [
+     1.25,
+     0.0625,
+     42,
+     100
+    ],
+    [
+     1.75,
+     0.0625,
+     42,
+     100
+    ],
+    [
+     2.2,
+     0.04999999999999982,
+     42,
+     100
+    ],
+    [
+     2.6,
+     0.04999999999999982,
+     42,
+     100
+    ]
+   ],
+   "pan": null,
+   "polyphony": 1,
+   "program": null,
+   "range": null,
+   "range_midi": [
+    42,
+    42
+   ],
+   "role": "drums:hats",
+   "track": 5,
+   "typical_polyphony": 1.0
+  },
+  {
+   "channel": 9,
+   "common_midi": 49,
+   "first": 3.55,
+   "id": "t5c9-cymbals",
+   "instrument": "Cymbals",
+   "is_drums": true,
+   "median_midi": 49.0,
+   "name": "cymbals",
+   "notes": 1,
+   "notes_head": [
+    [
+     3.55,
+     0.050000000000000266,
+     49,
+     100
+    ]
+   ],
+   "pan": null,
+   "polyphony": 1,
+   "program": null,
+   "range": null,
+   "range_midi": [
+    49,
+    49
+   ],
+   "role": "drums:cymbals",
+   "track": 5,
+   "typical_polyphony": 1.0
+  }
+ ],
+ "tempo_changes": 1,
+ "time_signature": [
+  3,
+  4
+ ]
+}
