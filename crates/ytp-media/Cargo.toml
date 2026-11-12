@@ -1,0 +1,16 @@
+[package]
+name = "ytp-media"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+ytp-splice = { path = "../ytp-splice" }
+ytp-text = { path = "../ytp-text" }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }

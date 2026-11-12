@@ -7,9 +7,7 @@
 </script>
 
 <script lang="ts">
-  // The finished video, its words, and again/download. The generate endpoint is
-  // not implemented yet, so nothing mounts this today; it takes the shape the
-  // old page drew (words found / spliced / missing) so it can be fed later.
+  // The finished video, its words (found / spliced / missing), and again/download.
   let {
     src,
     words = [],

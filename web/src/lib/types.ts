@@ -115,6 +115,50 @@ export type WsServerMessage =
   | { type: 'error'; message: string }
   | { type: 'pong' };
 
+export type WordStatus = 'found' | 'run' | 'spliced' | 'missing';
+
+export interface JobToken {
+  word: string;
+  status: WordStatus;
+  clips?: number[];
+  approx?: boolean;
+  stretched?: string;
+  voice?: string;
+  shown?: string;
+}
+
+export interface JobReport {
+  found: string[];
+  spliced: string[];
+  missing: string[];
+  runs: string[];
+  tokens: JobToken[];
+}
+
+/** What `GET /api/jobs/:id` returns. */
+export interface JobRecord {
+  id: string;
+  owner: number;
+  owner_name: string;
+  state: JobState;
+  progress: number;
+  message?: string;
+  created_at: string;
+  started_at?: string;
+  finished_at?: string;
+  text: string;
+  voice: string;
+  captions: boolean;
+  options: Record<string, unknown>;
+  report?: JobReport;
+  timeline?: { i: number; start: number; end: number }[];
+  duration?: number;
+  size_bytes?: number;
+  error?: string;
+  warnings: string[];
+  result_url?: string;
+}
+
 export interface JobEvent {
   id: string;
   state: JobState;

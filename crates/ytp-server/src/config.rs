@@ -5,8 +5,10 @@ use std::path::PathBuf;
 pub struct Config {
     pub data_dir: PathBuf,
     pub bind: SocketAddr,
-    /// ffmpeg binary for later phases (rendering); unused for now.
+    /// ffmpeg binary used for rendering (default: `ffmpeg` on PATH).
     pub ffmpeg: Option<PathBuf>,
+    /// How many jobs may render at once, across all users.
+    pub job_workers: usize,
     /// Extra origins allowed to open the WebSocket (e.g. a Vite dev server).
     pub allowed_origins: Vec<String>,
     /// Trust `X-Forwarded-For` / `X-Forwarded-Host` from a reverse proxy.
@@ -22,6 +24,7 @@ impl Config {
             data_dir: data_dir.into(),
             bind: ([127, 0, 0, 1], 8765).into(),
             ffmpeg: None,
+            job_workers: 2,
             allowed_origins: Vec::new(),
             trust_proxy: false,
             secure_cookies: false,

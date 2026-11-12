@@ -2,6 +2,7 @@
 //! media, as produced by the Python app. Read-only apart from install/delete.
 
 pub mod bundle;
+pub mod data;
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -16,6 +17,7 @@ use ytp_core::time::{now, rfc3339};
 use ytp_core::{Error, Result};
 
 pub use bundle::{Limits, DB_NAME};
+pub use data::{ClipRow, CorpusData, ToneRow};
 
 const MARKER: &str = ".ytp-installed";
 

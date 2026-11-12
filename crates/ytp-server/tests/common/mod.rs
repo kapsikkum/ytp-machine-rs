@@ -1,6 +1,7 @@
 #![allow(dead_code)]
 
 use std::path::Path;
+use std::sync::Arc;
 
 use axum::body::Body;
 use axum::http::{header, HeaderMap, Method, Request, StatusCode};
@@ -11,6 +12,7 @@ use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode};
 use sqlx::{ConnectOptions, Connection};
 use tempfile::TempDir;
 use tower::ServiceExt;
+use ytp_media::Renderer;
 use ytp_server::{app, AppState, Config};
 
 pub struct TestApp {
@@ -56,6 +58,22 @@ impl TestApp {
         let mut config = Config::new(dir.path().join("data"));
         tweak(&mut config);
         let st = AppState::new(config).await.unwrap();
+        Self {
+            app: app(st.clone()),
+            st,
+            dir,
+        }
+    }
+
+    /// A server whose renderer is the given one instead of ffmpeg.
+    pub async fn with_renderer(
+        renderer: Arc<dyn Renderer>,
+        tweak: impl FnOnce(&mut Config),
+    ) -> Self {
+        let dir = tempfile::tempdir().unwrap();
+        let mut config = Config::new(dir.path().join("data"));
+        tweak(&mut config);
+        let st = AppState::with_renderer(config, renderer).await.unwrap();
         Self {
             app: app(st.clone()),
             st,

@@ -31,9 +31,12 @@ enum Cmd {
 struct ServeArgs {
     #[arg(long, env = "YTP_BIND", default_value = "127.0.0.1:8765")]
     bind: SocketAddr,
-    /// ffmpeg binary (used by later phases).
+    /// ffmpeg binary used for rendering (default: `ffmpeg` on PATH).
     #[arg(long, env = "YTP_FFMPEG")]
     ffmpeg: Option<PathBuf>,
+    /// How many jobs may render at once, across all users.
+    #[arg(long, env = "YTP_JOB_WORKERS", default_value_t = 2)]
+    job_workers: usize,
     /// Extra origin allowed to open the WebSocket, e.g. http://localhost:5173.
     #[arg(
         long = "allowed-origin",
@@ -104,6 +107,7 @@ async fn serve(data_dir: PathBuf, a: ServeArgs) -> anyhow::Result<()> {
         data_dir,
         bind: a.bind,
         ffmpeg: a.ffmpeg,
+        job_workers: a.job_workers,
         allowed_origins: a.allowed_origins,
         trust_proxy: a.trust_proxy,
         secure_cookies: a.secure_cookies,
@@ -112,6 +116,10 @@ async fn serve(data_dir: PathBuf, a: ServeArgs) -> anyhow::Result<()> {
         .await
         .context("opening data directory")?;
     state.spawn_maintenance();
+    match state.renderer.check() {
+        Ok(v) => tracing::info!(ffmpeg = %v, "rendering enabled"),
+        Err(e) => tracing::warn!("rendering unavailable until ffmpeg is installed or --ffmpeg is set: {e}"),
+    }
 
     let listener = tokio::net::TcpListener::bind(config.bind)
         .await

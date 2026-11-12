@@ -2,6 +2,7 @@ import type {
   AuditEntry,
   AuthStateResponse,
   Corpus,
+  JobRecord,
   LoginResponse,
   Role,
   Quota,
@@ -171,10 +172,10 @@ export const api = {
     remove: (name: string) => request<void>(`/corpora/${enc(name)}`, json('DELETE'))
   },
 
-  /** Later phases: the server answers 501 and these throw NotImplementedError. */
   ytp: {
     generate: (body: Record<string, unknown>) => request<{ job_id: string }>('/ytp/generate', json('POST', body))
   },
+  /** Later phases: the server answers 501 and these throw NotImplementedError. */
   ytpmv: {
     midi: (file: File) => {
       const form = new FormData();
@@ -184,7 +185,10 @@ export const api = {
     render: (body: Record<string, unknown>) => request<{ job_id: string }>('/ytpmv/render', json('POST', body))
   },
   jobs: {
-    get: (id: string) => request<unknown>(`/jobs/${enc(id)}`)
+    get: (id: string) => request<JobRecord>(`/jobs/${enc(id)}`),
+    /** Cancels an active job; deletes a finished one with its video. */
+    cancel: (id: string) => request<void>(`/jobs/${enc(id)}`, json('DELETE')),
+    resultUrl: (id: string) => `${BASE}/jobs/${enc(id)}/result`
   },
   projects: {
     list: () => request<unknown[]>('/projects')

@@ -4,10 +4,21 @@ Rust rewrite of the "michael-rosen-says" YTP generator: splices word clips from
 a speech corpus into YouTube Poop videos and YTPMV music, behind a multi-user
 web UI (SvelteKit, embedded in the binary).
 
-Phase 1 (this): server foundation, accounts/roles/tokens, corpus install/list/delete.
-Generation endpoints answer 501 for now. API contract: [`docs/api.md`](docs/api.md).
+Phase 1: server foundation, accounts/roles/tokens, corpus install/list/delete.
+Phase 2 (this): text and splice logic ported from the Python app, ffmpeg rendering, a job
+queue, and `POST /api/ytp/generate` with the `/ytp` page working end to end.
+YTPMV and projects still answer 501. API contract: [`docs/api.md`](docs/api.md).
+
+Rendering needs `ffmpeg` on `PATH` (tested with 8.0.1), or `--ffmpeg <path>`.
+Not ported yet: singing/vocoder, forced alignment (cuts use the corpus's stored phones),
+per-corpus `pronunciations.csv`, the ffmpeg clip cache.
 
 ## Layout
+
+- `crates/ytp-text`: tokenizer, CMUdict phonemes, number words, effects markup
+- `crates/ytp-splice`: clip choice, phoneme splicing, timeline (Python-compatible RNG)
+- `crates/ytp-media`: the ffmpeg renderer
+- `tools/text/export_data.py`: regenerates the vendored CMUdict/tables and test fixtures
 
 - `crates/ytp-core`: shared types (errors, events, timeline model)
 - `crates/ytp-auth`: users, roles, permissions, sessions, API tokens, audit log

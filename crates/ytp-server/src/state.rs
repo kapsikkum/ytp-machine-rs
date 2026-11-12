@@ -6,6 +6,9 @@ use ytp_auth::{secret, AuthStore, LoginLimiter};
 use ytp_core::{Event, Result};
 use ytp_corpus::{CorpusStore, Limits};
 
+use ytp_media::{FfmpegRenderer, Renderer};
+
+use crate::jobs::Jobs;
 use crate::Config;
 
 pub struct Inner {
@@ -16,6 +19,9 @@ pub struct Inner {
     /// One-time first-run token; `Some` only while no user exists.
     pub setup_token: Mutex<Option<String>>,
     pub events: broadcast::Sender<Event>,
+    pub jobs: Jobs,
+    /// Cuts and encodes video; ffmpeg unless a test supplies another.
+    pub renderer: Arc<dyn Renderer>,
 }
 
 #[derive(Clone)]
@@ -31,6 +37,11 @@ impl Deref for AppState {
 
 impl AppState {
     pub async fn new(config: Config) -> Result<Self> {
+        let ffmpeg = config.ffmpeg.clone().unwrap_or_else(|| "ffmpeg".into());
+        Self::with_renderer(config, Arc::new(FfmpegRenderer::new(ffmpeg))).await
+    }
+
+    pub async fn with_renderer(config: Config, renderer: Arc<dyn Renderer>) -> Result<Self> {
         std::fs::create_dir_all(&config.data_dir)?;
         let auth = AuthStore::open(&config.data_dir.join("app.db")).await?;
         let corpora = CorpusStore::open(config.data_dir.join("corpora"), Limits::default())?;
@@ -40,14 +51,19 @@ impl AppState {
             None
         };
         let (events, _) = broadcast::channel(256);
-        Ok(Self(Arc::new(Inner {
+        let jobs = Jobs::new(&config.data_dir, config.job_workers, events.clone());
+        let state = Self(Arc::new(Inner {
             config,
             auth,
             corpora,
             limiter: LoginLimiter::default(),
             setup_token: Mutex::new(setup_token),
             events,
-        })))
+            jobs,
+            renderer,
+        }));
+        crate::jobs::start_workers(&state);
+        Ok(state)
     }
 
     pub async fn setup_token(&self) -> Option<String> {

@@ -10,7 +10,7 @@ use axum::routing::{on, MethodFilter, MethodRouter};
 use axum::Router;
 use ytp_auth::Permission::{self, *};
 
-use crate::handlers::{admin, auth, corpora, misc, tokens};
+use crate::handlers::{admin, auth, corpora, jobs, misc, tokens};
 use crate::{ws, AppState};
 
 /// Who may call a route.
@@ -221,17 +221,17 @@ pub fn api(state: &AppState) -> (Router<AppState>, Vec<RouteSpec>) {
         // events
         .get("/api/ws", Authenticated, ws::handler)
         // later phases: authenticated and permission-checked, then 501
-        .post(
-            "/api/ytp/generate",
-            Perm(GenerateYtp),
-            misc::not_implemented,
-        )
+        // jobs: generation is gated by permission; a job is then its owner's
+        // (or visible to jobs.view_all), which the handlers check
+        .post("/api/ytp/generate", Perm(GenerateYtp), jobs::generate)
+        .get("/api/jobs/{id}", Authenticated, jobs::get)
+        .delete("/api/jobs/{id}", Authenticated, jobs::cancel)
+        .get("/api/jobs/{id}/result", Authenticated, jobs::result)
         .any(
             "/api/ytpmv/{*rest}",
             Perm(GenerateYtpmv),
             misc::not_implemented,
         )
-        .get("/api/jobs/{id}", Authenticated, misc::not_implemented)
         .any(
             "/api/projects",
             ReadWrite {

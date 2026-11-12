@@ -441,10 +441,8 @@ async fn not_implemented_stubs() {
     let t = TestApp::new().await;
     let admin = t.setup_admin().await;
     for (m, p) in [
-        (Method::POST, "/api/ytp/generate"),
         (Method::POST, "/api/ytpmv/render"),
         (Method::GET, "/api/ytpmv/presets"),
-        (Method::GET, "/api/jobs/abc"),
         (Method::GET, "/api/projects"),
         (Method::POST, "/api/projects"),
         (Method::GET, "/api/projects/1"),

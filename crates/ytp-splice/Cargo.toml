@@ -1,0 +1,16 @@
+[package]
+name = "ytp-splice"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+ytp-text = { path = "../ytp-text" }
+ytp-corpus = { path = "../ytp-corpus" }
+indexmap = "2"
+serde_json = { workspace = true }
+sha2 = { workspace = true }
+tracing = { workspace = true }
+
+[dev-dependencies]

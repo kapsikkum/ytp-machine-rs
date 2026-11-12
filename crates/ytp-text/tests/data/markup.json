@@ -1,0 +1,914 @@
+{
+ "cases": [
+  {
+   "full": [
+    {
+     "ends": false,
+     "fx": {
+      "emph": "strong",
+      "pause": 0.5,
+      "pitch": 2.0,
+      "rate": 0.8,
+      "vol": 6.0
+     },
+     "noise": false,
+     "note": null,
+     "reverse": false,
+     "shown": "hello",
+     "stretch": [],
+     "word": "hello"
+    },
+    {
+     "ends": true,
+     "fx": {},
+     "noise": false,
+     "note": null,
+     "reverse": false,
+     "shown": "world",
+     "stretch": [],
+     "word": "world"
+    }
+   ],
+   "text": "hello{pause=0.5,rate=0.8,pitch=2,vol=6,emph=strong} world"
+  },
+  {
+   "full": [
+    {
+     "ends": false,
+     "fx": {
+      "boom": true,
+      "clip": 12,
+      "glitch": [
+       "shake",
+       "rainbow"
+      ],
+      "vocode": true,
+      "voice": "james-channel"
+     },
+     "noise": false,
+     "note": null,
+     "reverse": false,
+     "shown": "hello",
+     "stretch": [],
+     "word": "hello"
+    },
+    {
+     "ends": true,
+     "fx": {},
+     "noise": false,
+     "note": null,
+     "reverse": false,
+     "shown": "x",
+     "stretch": [],
+     "word": "x"
+    }
+   ],
+   "text": "hello{shake,shake,rainbow,boom,vocode,clip=12,v=james-channel} x"
+  },
+  {
+   "full": [
+    {
+     "ends": false,
+     "fx": {},
+     "noise": false,
+     "note": null,
+     "reverse": false,
+     "shown": "U",
+     "stretch": [],
+     "word": "you"
+    },
+    {
+     "ends": false,
+     "fx": {},
+     "noise": false,
+     "note": null,
+     "reverse": false,
+     "shown": "S",
+     "stretch": [],
+     "word": "es"
+    },
+    {
+     "ends": false,
+     "fx": {},
+     "noise": false,
+     "note": null,
+     "reverse": false,
+     "shown": "B",
+     "stretch": [],
+     "word": "bee"
+    },
+    {
+     "ends": true,
+     "fx": {},
+     "noise": false,
+     "note": null,
+     "reverse": false,
+     "shown": "rocks",
+     "stretch": [],
+     "word": "rocks"
+    },
+    {
+     "ends": false,
+     "fx": {},
+     "noise": false,
+     "note": null,
+     "reverse": false,
+     "shown": "A",
+     "stretch": [],
+     "word": "a"
+    },
+    {
+     "ends": true,
+     "fx": {},
+     "noise": false,
+     "note": null,
+     "reverse": false,
+     "shown": "5",
+     "stretch": [],
+     "word": "five"
+    }
+   ],
+   "text": "usb{spell} rocks. a5{spell}!"
+  },
+  {
+   "full": [
+    {
+     "ends": false,
+     "fx": {},
+     "noise": false,
+     "note": [
+      "rel",
+      2.0
+     ],
+     "reverse": false,
+     "shown": "sing",
+     "stretch": [],
+     "word": "sing"
+    },
+    {
+     "ends": false,
+     "fx": {},
+     "noise": false,
+     "note": [
+      "abs",
+      57.0
+     ],
+     "reverse": false,
+     "shown": "it",
+     "stretch": [],
+     "word": "it"
+    },
+    {
+     "ends": true,
+     "fx": {},
+     "noise": false,
+     "note": [
+      "abs",
+      61.0
+     ],
+     "reverse": false,
+     "shown": "now",
+     "stretch": [],
+     "word": "now"
+    },
+    {
+     "ends": true,
+     "fx": {},
+     "noise": false,
+     "note": [
+      "rel",
+      -3.0
+     ],
+     "reverse": false,
+     "shown": "hmm",
+     "stretch": [],
+     "word": "hmm"
+    }
+   ],
+   "text": "sing^+2 it^A3 now^c#4. hmm^-3"
+  },
+  {
+   "full": [
+    {
+     "ends": false,
+     "fx": {},
+     "noise": true,
+     "note": null,
+     "reverse": false,
+     "shown": "click",
+     "stretch": [],
+     "word": "click"
+    },
+    {
+     "ends": false,
+     "fx": {},
+     "noise": false,
+     "note": null,
+     "reverse": false,
+     "shown": "and",
+     "stretch": [],
+     "word": "and"
+    },
+    {
+     "ends": true,
+     "fx": {},
+     "noise": true,
+     "note": null,
+     "reverse": false,
+     "shown": "spew",
+     "stretch": [],
+     "word": "spew"
+    },
+    {
+     "ends": true,
+     "fx": {},
+     "noise": false,
+     "note": null,
+     "reverse": true,
+     "shown": "backwards",
+     "stretch": [],
+     "word": "backwards"
+    },
+    {
+     "ends": true,
+     "fx": {},
+     "noise": false,
+     "note": null,
+     "reverse": true,
+     "shown": "done",
+     "stretch": [],
+     "word": "done"
+    }
+   ],
+   "text": "*click* and *spew*! ~backwards~. ~done~?!"
+  },
+  {
+   "full": [
+    {
+     "ends": false,
+     "fx": {},
+     "noise": false,
+     "note": null,
+     "reverse": false,
+     "shown": "soooo",
+     "stretch": [
+      [
+       1,
+       1,
+       3
+      ]
+     ],
+     "word": "so"
+    },
+    {
+     "ends": false,
+     "fx": {},
+     "noise": false,
+     "note": null,
+     "reverse": false,
+     "shown": "goooood",
+     "stretch": [
+      [
+       1,
+       2,
+       3
+      ]
+     ],
+     "word": "good"
+    },
+    {
+     "ends": false,
+     "fx": {},
+     "noise": false,
+     "note": null,
+     "reverse": false,
+     "shown": "noooo",
+     "stretch": [
+      [
+       1,
+       1,
+       3
+      ]
+     ],
+     "word": "no"
+    },
+    {
+     "ends": false,
+     "fx": {},
+     "noise": false,
+     "note": null,
+     "reverse": false,
+     "shown": "stoppp",
+     "stretch": [],
+     "word": "stop"
+    },
+    {
+     "ends": false,
+     "fx": {},
+     "noise": false,
+     "note": null,
+     "reverse": false,
+     "shown": "yesss",
+     "stretch": [
+      [
+       2,
+       1,
+       2
+      ]
+     ],
+     "word": "yes"
+    },
+    {
+     "ends": true,
+     "fx": {},
+     "noise": false,
+     "note": null,
+     "reverse": false,
+     "shown": "hmmmm",
+     "stretch": [
+      [
+       1,
+       2,
+       2
+      ]
+     ],
+     "word": "hmm"
+    }
+   ],
+   "text": "soooo goooood noooo stoppp yesss hmmmm"
+  },
+  {
+   "full": [
+    {
+     "ends": false,
+     "fx": {
+      "pause": 3.0,
+      "pitch": -12.0,
+      "rate": 0.5
+     },
+     "noise": false,
+     "note": null,
+     "reverse": false,
+     "shown": "wait",
+     "stretch": [],
+     "word": "wait"
+    },
+    {
+     "ends": true,
+     "fx": {},
+     "noise": false,
+     "note": null,
+     "reverse": false,
+     "shown": "ok",
+     "stretch": [],
+     "word": "ok"
+    }
+   ],
+   "text": "wait{pause=9,rate=0.1,pitch=-40,vol=abc} ok{emph=weird}"
+  },
+  {
+   "full": [
+    {
+     "ends": false,
+     "fx": {},
+     "noise": false,
+     "note": null,
+     "reverse": false,
+     "shown": "third",
+     "stretch": [],
+     "word": "third"
+    },
+    {
+     "ends": false,
+     "fx": {},
+     "noise": false,
+     "note": null,
+     "reverse": false,
+     "shown": "twenty",
+     "stretch": [],
+     "word": "twenty"
+    },
+    {
+     "ends": false,
+     "fx": {},
+     "noise": false,
+     "note": null,
+     "reverse": false,
+     "shown": "first",
+     "stretch": [],
+     "word": "first"
+    },
+    {
+     "ends": false,
+     "fx": {},
+     "noise": false,
+     "note": null,
+     "reverse": false,
+     "shown": "twenty",
+     "stretch": [],
+     "word": "twenty"
+    },
+    {
+     "ends": false,
+     "fx": {},
+     "noise": false,
+     "note": null,
+     "reverse": false,
+     "shown": "twenties",
+     "stretch": [],
+     "word": "twenties"
+    },
+    {
+     "ends": false,
+     "fx": {},
+     "noise": false,
+     "note": null,
+     "reverse": false,
+     "shown": "nineteen",
+     "stretch": [],
+     "word": "nineteen"
+    },
+    {
+     "ends": false,
+     "fx": {},
+     "noise": false,
+     "note": null,
+     "reverse": false,
+     "shown": "nineties",
+     "stretch": [],
+     "word": "nineties"
+    },
+    {
+     "ends": false,
+     "fx": {},
+     "noise": false,
+     "note": null,
+     "reverse": false,
+     "shown": "ten",
+     "stretch": [],
+     "word": "ten"
+    },
+    {
+     "ends": false,
+     "fx": {},
+     "noise": false,
+     "note": null,
+     "reverse": false,
+     "shown": "s",
+     "stretch": [],
+     "word": "s"
+    },
+    {
+     "ends": false,
+     "fx": {},
+     "noise": false,
+     "note": null,
+     "reverse": false,
+     "shown": "seven",
+     "stretch": [],
+     "word": "seven"
+    },
+    {
+     "ends": false,
+     "fx": {},
+     "noise": false,
+     "note": null,
+     "reverse": false,
+     "shown": "by",
+     "stretch": [],
+     "word": "by"
+    },
+    {
+     "ends": false,
+     "fx": {},
+     "noise": false,
+     "note": null,
+     "reverse": false,
+     "shown": "seven",
+     "stretch": [],
+     "word": "seven"
+    },
+    {
+     "ends": false,
+     "fx": {},
+     "noise": false,
+     "note": null,
+     "reverse": false,
+     "shown": "one",
+     "stretch": [],
+     "word": "one"
+    },
+    {
+     "ends": false,
+     "fx": {},
+     "noise": false,
+     "note": null,
+     "reverse": false,
+     "shown": "two",
+     "stretch": [],
+     "word": "two"
+    },
+    {
+     "ends": false,
+     "fx": {},
+     "noise": false,
+     "note": null,
+     "reverse": false,
+     "shown": "hundred",
+     "stretch": [],
+     "word": "hundred"
+    },
+    {
+     "ends": false,
+     "fx": {},
+     "noise": false,
+     "note": null,
+     "reverse": false,
+     "shown": "and",
+     "stretch": [],
+     "word": "and"
+    },
+    {
+     "ends": false,
+     "fx": {},
+     "noise": false,
+     "note": null,
+     "reverse": false,
+     "shown": "fifty",
+     "stretch": [],
+     "word": "fifty"
+    },
+    {
+     "ends": false,
+     "fx": {},
+     "noise": false,
+     "note": null,
+     "reverse": false,
+     "shown": "fifty",
+     "stretch": [],
+     "word": "fifty"
+    },
+    {
+     "ends": false,
+     "fx": {},
+     "noise": false,
+     "note": null,
+     "reverse": false,
+     "shown": "dollars",
+     "stretch": [],
+     "word": "dollars"
+    },
+    {
+     "ends": false,
+     "fx": {},
+     "noise": false,
+     "note": null,
+     "reverse": false,
+     "shown": "ninety",
+     "stretch": [],
+     "word": "ninety"
+    },
+    {
+     "ends": false,
+     "fx": {},
+     "noise": false,
+     "note": null,
+     "reverse": false,
+     "shown": "nine",
+     "stretch": [],
+     "word": "nine"
+    },
+    {
+     "ends": false,
+     "fx": {},
+     "noise": false,
+     "note": null,
+     "reverse": false,
+     "shown": "percent",
+     "stretch": [],
+     "word": "percent"
+    },
+    {
+     "ends": false,
+     "fx": {},
+     "noise": false,
+     "note": null,
+     "reverse": false,
+     "shown": "four",
+     "stretch": [],
+     "word": "four"
+    },
+    {
+     "ends": false,
+     "fx": {},
+     "noise": false,
+     "note": null,
+     "reverse": false,
+     "shown": "point",
+     "stretch": [],
+     "word": "point"
+    },
+    {
+     "ends": false,
+     "fx": {},
+     "noise": false,
+     "note": null,
+     "reverse": false,
+     "shown": "five",
+     "stretch": [],
+     "word": "five"
+    },
+    {
+     "ends": true,
+     "fx": {},
+     "noise": false,
+     "note": null,
+     "reverse": false,
+     "shown": "kilometres",
+     "stretch": [],
+     "word": "kilometres"
+    }
+   ],
+   "text": "3rd 21st 2020s 1990s 10s 7x7 $1,250.50 99% 4.5km"
+  },
+  {
+   "full": [
+    {
+     "ends": false,
+     "fx": {},
+     "noise": false,
+     "note": null,
+     "reverse": false,
+     "shown": "litres",
+     "stretch": [],
+     "word": "litres"
+    },
+    {
+     "ends": false,
+     "fx": {},
+     "noise": false,
+     "note": null,
+     "reverse": false,
+     "shown": "per",
+     "stretch": [],
+     "word": "per"
+    },
+    {
+     "ends": false,
+     "fx": {},
+     "noise": false,
+     "note": null,
+     "reverse": false,
+     "shown": "hundred",
+     "stretch": [],
+     "word": "hundred"
+    },
+    {
+     "ends": false,
+     "fx": {},
+     "noise": false,
+     "note": null,
+     "reverse": false,
+     "shown": "kilometres",
+     "stretch": [],
+     "word": "kilometres"
+    },
+    {
+     "ends": false,
+     "fx": {},
+     "noise": false,
+     "note": null,
+     "reverse": false,
+     "shown": "miles",
+     "stretch": [],
+     "word": "miles"
+    },
+    {
+     "ends": false,
+     "fx": {},
+     "noise": false,
+     "note": null,
+     "reverse": false,
+     "shown": "per",
+     "stretch": [],
+     "word": "per"
+    },
+    {
+     "ends": false,
+     "fx": {},
+     "noise": false,
+     "note": null,
+     "reverse": false,
+     "shown": "hour",
+     "stretch": [],
+     "word": "hour"
+    },
+    {
+     "ends": false,
+     "fx": {},
+     "noise": false,
+     "note": null,
+     "reverse": false,
+     "shown": "kilometres",
+     "stretch": [],
+     "word": "kilometres"
+    },
+    {
+     "ends": false,
+     "fx": {},
+     "noise": false,
+     "note": null,
+     "reverse": false,
+     "shown": "per",
+     "stretch": [],
+     "word": "per"
+    },
+    {
+     "ends": false,
+     "fx": {},
+     "noise": false,
+     "note": null,
+     "reverse": false,
+     "shown": "hour",
+     "stretch": [],
+     "word": "hour"
+    },
+    {
+     "ends": false,
+     "fx": {},
+     "noise": false,
+     "note": null,
+     "reverse": false,
+     "shown": "and",
+     "stretch": [],
+     "word": "and"
+    },
+    {
+     "ends": false,
+     "fx": {},
+     "noise": false,
+     "note": null,
+     "reverse": false,
+     "shown": "or",
+     "stretch": [],
+     "word": "or"
+    },
+    {
+     "ends": false,
+     "fx": {},
+     "noise": false,
+     "note": null,
+     "reverse": false,
+     "shown": "a",
+     "stretch": [],
+     "word": "a"
+    },
+    {
+     "ends": false,
+     "fx": {},
+     "noise": false,
+     "note": null,
+     "reverse": false,
+     "shown": "b",
+     "stretch": [],
+     "word": "b"
+    },
+    {
+     "ends": false,
+     "fx": {},
+     "noise": false,
+     "note": null,
+     "reverse": false,
+     "shown": "c",
+     "stretch": [],
+     "word": "c"
+    },
+    {
+     "ends": true,
+     "fx": {},
+     "noise": false,
+     "note": null,
+     "reverse": false,
+     "shown": "d",
+     "stretch": [],
+     "word": "d"
+    }
+   ],
+   "text": "l/100km mph km/h and/or a-b c/d"
+  },
+  {
+   "full": [
+    {
+     "ends": false,
+     "fx": {},
+     "noise": false,
+     "note": null,
+     "reverse": false,
+     "shown": "n",
+     "stretch": [],
+     "word": "n"
+    },
+    {
+     "ends": false,
+     "fx": {},
+     "noise": false,
+     "note": null,
+     "reverse": false,
+     "shown": "code",
+     "stretch": [],
+     "word": "code"
+    },
+    {
+     "ends": false,
+     "fx": {},
+     "noise": false,
+     "note": null,
+     "reverse": false,
+     "shown": "w",
+     "stretch": [],
+     "word": "w"
+    },
+    {
+     "ends": false,
+     "fx": {},
+     "noise": false,
+     "note": null,
+     "reverse": false,
+     "shown": "rds",
+     "stretch": [],
+     "word": "rds"
+    },
+    {
+     "ends": false,
+     "fx": {},
+     "noise": false,
+     "note": null,
+     "reverse": false,
+     "shown": "na",
+     "stretch": [],
+     "word": "na"
+    },
+    {
+     "ends": false,
+     "fx": {},
+     "noise": false,
+     "note": null,
+     "reverse": false,
+     "shown": "ve",
+     "stretch": [],
+     "word": "ve"
+    },
+    {
+     "ends": false,
+     "fx": {},
+     "noise": false,
+     "note": null,
+     "reverse": false,
+     "shown": "café",
+     "stretch": [],
+     "word": "café"
+    },
+    {
+     "ends": false,
+     "fx": {},
+     "noise": false,
+     "note": null,
+     "reverse": false,
+     "shown": "5",
+     "stretch": [],
+     "word": "5"
+    },
+    {
+     "ends": false,
+     "fx": {},
+     "noise": false,
+     "note": null,
+     "reverse": false,
+     "shown": "three",
+     "stretch": [],
+     "word": "three"
+    },
+    {
+     "ends": true,
+     "fx": {},
+     "noise": false,
+     "note": null,
+     "reverse": false,
+     "shown": "pounds",
+     "stretch": [],
+     "word": "pounds"
+    }
+   ],
+   "text": "Ünïcode wörds, naïve café 5€ £3"
+  }
+ ],
+ "clips": {
+  "good": 3,
+  "goood": 1,
+  "hmm": 1,
+  "no": 4,
+  "so": 2,
+  "stop": 2,
+  "yes": 5
+ }
+}

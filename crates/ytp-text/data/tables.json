@@ -1,0 +1,832 @@
+{
+ "letter_names": {
+  "a": [
+   "EY"
+  ],
+  "b": [
+   "B",
+   "IY"
+  ],
+  "c": [
+   "S",
+   "IY"
+  ],
+  "d": [
+   "D",
+   "IY"
+  ],
+  "e": [
+   "IY"
+  ],
+  "f": [
+   "EH",
+   "F"
+  ],
+  "g": [
+   "JH",
+   "IY"
+  ],
+  "h": [
+   "EY",
+   "CH"
+  ],
+  "i": [
+   "AY"
+  ],
+  "j": [
+   "JH",
+   "EY"
+  ],
+  "k": [
+   "K",
+   "EY"
+  ],
+  "l": [
+   "EH",
+   "L"
+  ],
+  "m": [
+   "EH",
+   "M"
+  ],
+  "n": [
+   "EH",
+   "N"
+  ],
+  "o": [
+   "OW"
+  ],
+  "p": [
+   "P",
+   "IY"
+  ],
+  "q": [
+   "K",
+   "Y",
+   "UW"
+  ],
+  "r": [
+   "AA",
+   "R"
+  ],
+  "s": [
+   "EH",
+   "S"
+  ],
+  "t": [
+   "T",
+   "IY"
+  ],
+  "u": [
+   "Y",
+   "UW"
+  ],
+  "v": [
+   "V",
+   "IY"
+  ],
+  "w": [
+   "D",
+   "AH",
+   "B",
+   "AH",
+   "L",
+   "Y",
+   "UW"
+  ],
+  "x": [
+   "EH",
+   "K",
+   "S"
+  ],
+  "y": [
+   "W",
+   "AY"
+  ],
+  "z": [
+   "Z",
+   "IY"
+  ]
+ },
+ "overrides": {
+  "arse": [
+   "AA",
+   "R",
+   "S"
+  ],
+  "arsehole": [
+   "AA",
+   "R",
+   "S",
+   "HH",
+   "OW",
+   "L"
+  ],
+  "bodgy": [
+   "B",
+   "AA",
+   "JH",
+   "IY"
+  ],
+  "clit": [
+   "K",
+   "L",
+   "IH",
+   "T"
+  ],
+  "cum": [
+   "K",
+   "AH",
+   "M"
+  ],
+  "dodgy": [
+   "D",
+   "AA",
+   "JH",
+   "IY"
+  ],
+  "donk": [
+   "D",
+   "AA",
+   "NG",
+   "K"
+  ],
+  "dyno": [
+   "D",
+   "AY",
+   "N",
+   "OW"
+  ],
+  "esky": [
+   "EH",
+   "S",
+   "K",
+   "IY"
+  ],
+  "knackered": [
+   "N",
+   "AE",
+   "K",
+   "ER",
+   "D"
+  ],
+  "oclock": [
+   "AH",
+   "K",
+   "L",
+   "AA",
+   "K"
+  ],
+  "sex": [
+   "S",
+   "IH",
+   "K",
+   "S"
+  ],
+  "shat": [
+   "SH",
+   "AE",
+   "T"
+  ],
+  "shhhh": [
+   "SH"
+  ],
+  "shonky": [
+   "SH",
+   "AA",
+   "NG",
+   "K",
+   "IY"
+  ],
+  "skyfoogle": [
+   "S",
+   "K",
+   "AY",
+   "F",
+   "UW",
+   "G",
+   "AH",
+   "L"
+  ],
+  "tradie": [
+   "T",
+   "R",
+   "EY",
+   "D",
+   "IY"
+  ],
+  "ute": [
+   "Y",
+   "UW",
+   "T"
+  ],
+  "utes": [
+   "Y",
+   "UW",
+   "T",
+   "S"
+  ],
+  "wank": [
+   "W",
+   "AE",
+   "NG",
+   "K"
+  ]
+ },
+ "recipes": {
+  "cock": [
+   [
+    [
+     "K"
+    ],
+    [
+     "catch",
+     "key"
+    ]
+   ],
+   [
+    [
+     "AA",
+     "K"
+    ],
+    [
+     "lock",
+     "oclock"
+    ]
+   ]
+  ],
+  "fuck": [
+   [
+    [
+     "F"
+    ],
+    [
+     "four",
+     "fool",
+     "five",
+     "food"
+    ]
+   ],
+   [
+    [
+     "AH",
+     "K"
+    ],
+    [
+     "ducks"
+    ]
+   ]
+  ],
+  "fucks": [
+   [
+    [
+     "F"
+    ],
+    [
+     "four",
+     "fool",
+     "five",
+     "food"
+    ]
+   ],
+   [
+    [
+     "AH",
+     "K",
+     "S"
+    ],
+    [
+     "ducks"
+    ]
+   ]
+  ],
+  "shit": [
+   [
+    [
+     "SH"
+    ],
+    [
+     "*shhhh:0.10-0.22"
+    ]
+   ],
+   [
+    [
+     "IH",
+     "T"
+    ],
+    [
+     "do it"
+    ]
+   ]
+  ]
+ },
+ "said_as_word": {
+  "aah": [
+   "AA"
+  ],
+  "ahh": [
+   "AA"
+  ],
+  "argh": [
+   "AA",
+   "R"
+  ],
+  "booger": [
+   "B",
+   "UH",
+   "G",
+   "ER"
+  ],
+  "boogered": [
+   "B",
+   "UH",
+   "G",
+   "ER",
+   "D"
+  ],
+  "brr": [
+   "B",
+   "R"
+  ],
+  "cack": [
+   "K",
+   "AE",
+   "K"
+  ],
+  "crinkling": [
+   "K",
+   "R",
+   "IH",
+   "NG",
+   "K",
+   "L",
+   "IH",
+   "NG"
+  ],
+  "crusties": [
+   "K",
+   "R",
+   "AH",
+   "S",
+   "T",
+   "IY",
+   "Z"
+  ],
+  "cuz": [
+   "K",
+   "AH",
+   "Z"
+  ],
+  "effed": [
+   "EH",
+   "F",
+   "T"
+  ],
+  "eggy": [
+   "EH",
+   "G",
+   "IY"
+  ],
+  "emulator": [
+   "EH",
+   "M",
+   "Y",
+   "AH",
+   "L",
+   "EY",
+   "T",
+   "ER"
+  ],
+  "emulators": [
+   "EH",
+   "M",
+   "Y",
+   "AH",
+   "L",
+   "EY",
+   "T",
+   "ER",
+   "Z"
+  ],
+  "ew": [
+   "IY",
+   "UW"
+  ],
+  "eww": [
+   "IY",
+   "UW"
+  ],
+  "friggin": [
+   "F",
+   "R",
+   "IH",
+   "G",
+   "IH",
+   "N"
+  ],
+  "frigging": [
+   "F",
+   "R",
+   "IH",
+   "G",
+   "IH",
+   "NG"
+  ],
+  "fugly": [
+   "F",
+   "AH",
+   "G",
+   "L",
+   "IY"
+  ],
+  "github": [
+   "G",
+   "IH",
+   "T",
+   "HH",
+   "AH",
+   "B"
+  ],
+  "gloopy": [
+   "G",
+   "L",
+   "UW",
+   "P",
+   "IY"
+  ],
+  "goobers": [
+   "G",
+   "UW",
+   "B",
+   "ER",
+   "Z"
+  ],
+  "hm": [
+   "HH",
+   "M"
+  ],
+  "hmm": [
+   "HH",
+   "M"
+  ],
+  "huh": [
+   "HH",
+   "AH"
+  ],
+  "igniter": [
+   "IH",
+   "G",
+   "N",
+   "AY",
+   "T",
+   "ER"
+  ],
+  "ipad": [
+   "AY",
+   "P",
+   "AE",
+   "D"
+  ],
+  "iphone": [
+   "AY",
+   "F",
+   "OW",
+   "N"
+  ],
+  "ipod": [
+   "AY",
+   "P",
+   "AA",
+   "D"
+  ],
+  "manky": [
+   "M",
+   "AE",
+   "NG",
+   "K",
+   "IY"
+  ],
+  "meh": [
+   "M",
+   "EH"
+  ],
+  "mm": [
+   "M"
+  ],
+  "mmm": [
+   "M"
+  ],
+  "ooh": [
+   "UW"
+  ],
+  "oooh": [
+   "UW"
+  ],
+  "plonk": [
+   "P",
+   "L",
+   "AA",
+   "NG",
+   "K"
+  ],
+  "psh": [
+   "P",
+   "SH"
+  ],
+  "shh": [
+   "SH"
+  ],
+  "speedo": [
+   "S",
+   "P",
+   "IY",
+   "D",
+   "OW"
+  ],
+  "splines": [
+   "S",
+   "P",
+   "L",
+   "AY",
+   "N",
+   "Z"
+  ],
+  "turbo": [
+   "T",
+   "ER",
+   "B",
+   "OW"
+  ],
+  "turd": [
+   "T",
+   "ER",
+   "D"
+  ],
+  "ubuntu": [
+   "UW",
+   "B",
+   "UU",
+   "N",
+   "T",
+   "UW"
+  ],
+  "ugh": [
+   "AH",
+   "G"
+  ],
+  "vac": [
+   "V",
+   "AE",
+   "K"
+  ],
+  "wi": [
+   "W",
+   "AY"
+  ],
+  "wifi": [
+   "W",
+   "AY",
+   "F",
+   "AY"
+  ],
+  "wii": [
+   "W",
+   "IY"
+  ],
+  "woo": [
+   "W",
+   "UW"
+  ],
+  "yay": [
+   "Y",
+   "EY"
+  ]
+ },
+ "spelled_out": [
+  "abs",
+  "ad",
+  "ai",
+  "aio",
+  "aka",
+  "am",
+  "amd",
+  "amg",
+  "api",
+  "asap",
+  "atm",
+  "atv",
+  "av",
+  "avi",
+  "awd",
+  "ba",
+  "bbc",
+  "bc",
+  "bfi",
+  "bhp",
+  "bios",
+  "bmw",
+  "bmws",
+  "brb",
+  "brz",
+  "cd",
+  "ceo",
+  "cf",
+  "cfo",
+  "cia",
+  "cli",
+  "cls",
+  "cnn",
+  "cpu",
+  "crt",
+  "css",
+  "cv",
+  "cvt",
+  "cvts",
+  "dc",
+  "diy",
+  "dj",
+  "dlss",
+  "dna",
+  "dns",
+  "dohc",
+  "dpf",
+  "dvd",
+  "dvi",
+  "ecu",
+  "efi",
+  "eg",
+  "egr",
+  "emmc",
+  "ep",
+  "epa",
+  "esp",
+  "etc",
+  "eu",
+  "evs",
+  "exe",
+  "faq",
+  "fbi",
+  "fps",
+  "ftp",
+  "fwd",
+  "gb",
+  "gm",
+  "gmc",
+  "gms",
+  "gpu",
+  "gt",
+  "gta",
+  "gti",
+  "gtx",
+  "gui",
+  "hd",
+  "hdd",
+  "hdmi",
+  "hp",
+  "hr",
+  "hsv",
+  "html",
+  "id",
+  "ide",
+  "ie",
+  "iga",
+  "ii",
+  "iii",
+  "imo",
+  "ip",
+  "ipd",
+  "iq",
+  "iso",
+  "iv",
+  "ix",
+  "jb",
+  "jdm",
+  "kb",
+  "kc",
+  "kfc",
+  "kph",
+  "kvm",
+  "lan",
+  "lcd",
+  "led",
+  "lol",
+  "lpg",
+  "ltt",
+  "mb",
+  "mc",
+  "mg",
+  "mot",
+  "mp3",
+  "mp4",
+  "mpg",
+  "mph",
+  "ms",
+  "mx",
+  "nas",
+  "nasa",
+  "ngk",
+  "nt",
+  "nvme",
+  "nz",
+  "obd",
+  "obs",
+  "ok",
+  "oled",
+  "omg",
+  "os",
+  "pc",
+  "pcb",
+  "pci",
+  "pcp",
+  "pcv",
+  "pdf",
+  "pm",
+  "pmb",
+  "png",
+  "pp",
+  "pr",
+  "psi",
+  "psp",
+  "psu",
+  "px",
+  "raid",
+  "ram",
+  "rca",
+  "rf",
+  "rgb",
+  "rgba",
+  "rgbw",
+  "rj",
+  "rna",
+  "rom",
+  "rpm",
+  "rs",
+  "rt",
+  "rts",
+  "rtx",
+  "rwd",
+  "sata",
+  "sd",
+  "sdk",
+  "sdl",
+  "sdxc",
+  "sl",
+  "sma",
+  "sohc",
+  "sql",
+  "ss",
+  "ssd",
+  "ssh",
+  "sti",
+  "suv",
+  "svg",
+  "tb",
+  "tcp",
+  "tnt",
+  "tv",
+  "udp",
+  "ufo",
+  "uhd",
+  "ui",
+  "uk",
+  "url",
+  "us",
+  "usa",
+  "usb",
+  "ut",
+  "ute",
+  "utv",
+  "uv",
+  "va",
+  "vga",
+  "vi",
+  "vii",
+  "viii",
+  "vin",
+  "vip",
+  "vl",
+  "vm",
+  "vpn",
+  "vr",
+  "vram",
+  "vsync",
+  "vtec",
+  "vw",
+  "wan",
+  "wd",
+  "wrx",
+  "wsl",
+  "wtf",
+  "xf",
+  "xi",
+  "xii",
+  "xl",
+  "xp",
+  "xr",
+  "xt",
+  "xx",
+  "xxx",
+  "yf",
+  "zif"
+ ]
+}
