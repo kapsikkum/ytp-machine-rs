@@ -4,11 +4,12 @@
   import { api, ApiError, errorText, type PreviewInfo } from '#lib/api.ts';
   import { can } from '#lib/auth.ts';
   import { ProjectHistory } from '#lib/history.ts';
-  import { mixOf, projectDuration, toTimelineTracks, type Project, type ProjectMeta, type StoredProject } from '#lib/project.ts';
+  import { mixOf, projectDuration, toTimelineTracks, type Effect, type Project, type ProjectMeta, type StoredProject } from '#lib/project.ts';
   import { TRACK_COLORS, type Track, type TrackKind } from '#lib/timeline.ts';
   import { jobEvents, subscribeTopic } from '#lib/ws.ts';
   import TopBar from '#lib/components/TopBar.svelte';
   import VoiceSelect from '#lib/components/VoiceSelect.svelte';
+  import EffectsPanel from '#lib/components/studio/EffectsPanel.svelte';
   import PreviewPane from '#lib/components/studio/PreviewPane.svelte';
   import PromptBox, { type Mode } from '#lib/components/studio/PromptBox.svelte';
   import Timeline from '#lib/components/timeline/Timeline.svelte';
@@ -43,6 +44,8 @@
   let playhead = $state(0);
   let playing = $state(false);
   let selected = $state<string | null>(null);
+  // The clip whose effects the panel edits: its track and clip ids.
+  let selectedClip = $state<{ track: string; clip: string } | null>(null);
   let note = $state('');
   let noteIsError = $state(false);
   let lastPreview = $state('');
@@ -59,6 +62,7 @@
     loadError = '';
     playhead = 0;
     playing = false;
+    selectedClip = null;
     note = '';
     if (id === null) {
       if ($can('project.read')) api.projects.list().then((l) => (recent = l)).catch(() => (recent = []));
@@ -109,6 +113,28 @@
   const tracks = $derived<Track[]>(project ? toTimelineTracks(project) : localTracks);
   const duration = $derived(project ? Math.max(1, projectDuration(project) + (stored?.kind === 'song' ? 0.8 : 0)) : 30);
   const canWrite = $derived(!!stored && stored.access !== 'read' && $can('project.write'));
+
+  // The clip under the timeline selection, or null when none is selected (or
+  // the one that was is gone).
+  const selection = $derived.by(() => {
+    const s = selectedClip;
+    if (!project || !s) return null;
+    const track = project.tracks.find((t) => t.id === s.track);
+    return track?.clips.find((c) => c.id === s.clip) ?? null;
+  });
+
+  // Effects edits from the panel: change the clip, then record the state so
+  // undo brings the old effects back; `dirty` makes the save button persist it.
+  function setEffects(effects: Effect[]) {
+    if (!project || !selectedClip) return;
+    const { track: trackId, clip: clipId } = selectedClip;
+    const track = project.tracks.find((t) => t.id === trackId);
+    const clip = track?.clips.find((c) => c.id === clipId);
+    if (!clip) return;
+    clip.effects = effects;
+    dirty = true;
+    record();
+  }
 
   function flag(id: string, f: 'mute' | 'solo') {
     if (!project) {
@@ -313,8 +339,17 @@
         <button type="button" class="danger" disabled={!selected} onclick={removeSelected}>remove track</button>
       {/if}
     </div>
-    <Timeline {tracks} {duration} {selected} bind:playhead onselect={(id) => (selected = id)} onflag={flag} empty="Add a track to begin." />
+    <Timeline {tracks} {duration} {selected} selectedClip={selectedClip?.clip ?? null} bind:playhead
+              onselect={(id) => { selected = id; if (selectedClip && selectedClip.track !== id) selectedClip = null; }}
+              onselectclip={(track, clip) => { selected = track; selectedClip = { track, clip }; }}
+              onflag={flag} empty="Add a track to begin." />
   </div>
+
+  {#if project && selection}
+    <EffectsPanel clip={selection} editable={canWrite} onchange={setEffects} />
+  {:else if project}
+    <p class="meta">Select a clip in the timeline to edit its effects.</p>
+  {/if}
 </div>
 
 <style>

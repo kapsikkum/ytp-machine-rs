@@ -8,16 +8,20 @@
     tracks,
     duration,
     selected = null,
+    selectedClip = null,
     playhead = $bindable(0),
     onselect,
+    onselectclip,
     onflag,
     empty = 'No tracks yet.'
   }: {
     tracks: Track[];
     duration: number;
     selected?: string | null;
+    selectedClip?: string | null;
     playhead?: number;
     onselect?: (id: string) => void;
+    onselectclip?: (track: string, clip: string) => void;
     onflag?: (id: string, flag: 'mute' | 'solo') => void;
     empty?: string;
   } = $props();
@@ -88,8 +92,9 @@
           </div>
           <div class="region" role="presentation" onpointerdown={seek}>
             {#each inView(t.clips) as c (c.id)}
-              <button type="button" class="clip" style:left="{c.start * pps}px" style:width="{Math.max(6, c.length * pps)}px" title={c.label}
-                      onpointerdown={(e) => e.stopPropagation()} onclick={() => onselect?.(t.id)}>{c.label}</button>
+              <button type="button" class="clip" class:selected={selectedClip === c.id} style:left="{c.start * pps}px" style:width="{Math.max(6, c.length * pps)}px" title={c.label}
+                      aria-pressed={selectedClip === c.id}
+                      onpointerdown={(e) => e.stopPropagation()} onclick={() => { onselect?.(t.id); onselectclip?.(t.id, c.id); }}>{c.label}</button>
             {/each}
             {#if t.notes?.length}
               <svg viewBox="0 0 {width} 100" preserveAspectRatio="none" aria-hidden="true">
@@ -169,6 +174,8 @@
     background: color-mix(in srgb, var(--track-color) 22%, var(--surface)); border: 1px solid var(--track-color);
   }
   .clip:hover:not(:disabled) { background: color-mix(in srgb, var(--track-color) 34%, var(--surface)); border-color: var(--track-color); }
+  .clip.selected { color: #000; background: var(--yellow); border-color: var(--yellow); }
+  .clip.selected:hover:not(:disabled) { background: var(--yellow-2); border-color: var(--yellow-2); }
   .region svg { position: absolute; inset: 0; width: 100%; height: 100%; display: block; background: color-mix(in srgb, var(--track-color) 8%, transparent); }
   .region rect { fill: currentColor; stroke: currentColor; stroke-width: .5px; }
 
