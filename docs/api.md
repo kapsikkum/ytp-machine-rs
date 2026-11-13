@@ -256,6 +256,10 @@ Effect = speed{factor} | stretch{factor} | reverse | pitch{semitones} | volume{d
        | mirror | glitch{name} | fade_in{seconds} | fade_out{seconds} | pause{seconds} | subword
 ```
 
+A `place` on the bottom layer of a composite (or in a project with a single video track) is inert — the
+bottom layer always fills the frame — and it applies per overlap span, so the box shows only where clips
+from different tracks overlap.
+
 Validation (422 with the reason): ids are 1–64 of `A-Za-z0-9_-` and unique; `start >= 0`,
 `duration > 0`, `in < out`; effect parameters in range (speed 0.1–10, stretch 0.1–16, pitch ±48,
 volume −80…+40 dB); at most 256 tracks and 50 000 clips; a synth clip lives on an audio track.

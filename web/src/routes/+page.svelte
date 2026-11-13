@@ -4,7 +4,7 @@
   import { api, ApiError, errorText, type PreviewInfo } from '#lib/api.ts';
   import { can } from '#lib/auth.ts';
   import { ProjectHistory } from '#lib/history.ts';
-  import { mixOf, projectDuration, toTimelineTracks, type Effect, type Place, type Project, type ProjectMeta, type StoredProject } from '#lib/project.ts';
+  import { mixOf, projectDuration, toTimelineTracks, type Effect, type Place, type Project, type ProjectClip, type ProjectMeta, type StoredProject } from '#lib/project.ts';
   import { TRACK_COLORS, type Track, type TrackKind } from '#lib/timeline.ts';
   import { jobEvents, subscribeTopic } from '#lib/ws.ts';
   import TopBar from '#lib/components/TopBar.svelte';
@@ -64,6 +64,7 @@
     playing = false;
     selectedClip = null;
     note = '';
+    addNote = '';
     cancelMove();
     if (id === null) {
       if ($can('project.read')) api.projects.list().then((l) => (recent = l)).catch(() => (recent = []));
@@ -141,19 +142,47 @@
   // shift to fit - so the panel says that instead of pretending to know the
   // length. Only `ytp` is offered: the server expands no other kind yet.
   const GENERATED_PLACEHOLDER = 2;
+  // The shortest clip the Studio writes (crates/ytp-core/src/timeline.rs wants
+  // duration > 0; anything below this is no clip at all).
+  const MIN_CLIP = 0.05;
+  // Why the last "+ generated" click added nothing; shown by the toolbar.
+  let addNote = $state('');
+
+  // The room a clip added at `at` has on a track: up to the start of the next
+  // clip that begins at or after it (Infinity when there is none), or null when
+  // `at` is inside a clip, where there is no room at all. The renderer refuses
+  // same-track overlaps (crates/ytp-render/src/sequence.rs) but validate() does
+  // not, so the placeholder has to fit this gap: the longer real length only
+  // shifts clips that start later.
+  function roomAt(clips: ProjectClip[], at: number): number | null {
+    let room = Infinity;
+    for (const c of clips) {
+      if (at > c.start && at < c.start + c.duration) return null;
+      if (c.start >= at) room = Math.min(room, c.start - at);
+    }
+    return room;
+  }
+
   function addGeneratedClip() {
     const track = videoTrack;
     if (!project || !canWrite || !track) return;
+    const start = Number.isFinite(playhead) ? Math.max(0, playhead) : 0;
+    const room = roomAt(track.clips, start);
+    const duration = room === null ? 0 : Math.min(GENERATED_PLACEHOLDER, room);
+    if (duration < MIN_CLIP) {
+      addNote = 'no room for a new clip here';
+      return;
+    }
     const used = new Set(project.tracks.flatMap((t) => t.clips.map((c) => c.id)));
     // The id style plans use (crates/ytp-splice/src/project.rs: `c{i}`), first free.
     let n = 0;
     while (used.has(`c${n}`)) n += 1;
     const id = `c${n}`;
-    const start = Number.isFinite(playhead) ? Math.max(0, playhead) : 0;
+    addNote = '';
     track.clips.push({
       id,
       start,
-      duration: GENERATED_PLACEHOLDER,
+      duration,
       source: { type: 'generated', kind: 'ytp', prompt: '', options: {}, seed: '', corpus: undefined },
       effects: []
     });
@@ -540,8 +569,9 @@
         <span class="add">
           add clip
           <button type="button" disabled={!canWrite || !videoTrack}
-                  title={!canWrite ? 'Read-only access' : videoTrack ? 'A generated clip: a prompt and a seed, cut when it renders' : 'Select a video track first'}
+                  title={!canWrite ? 'Read-only access' : videoTrack ? 'A generated clip: the placeholder is clamped to the gap before the next clip; the real length is decided when it renders' : 'Select a video track first'}
                   onclick={addGeneratedClip}>+ generated</button>
+          {#if addNote}<span class="note" role="status">{addNote}</span>{/if}
         </span>
       {/if}
     </div>
