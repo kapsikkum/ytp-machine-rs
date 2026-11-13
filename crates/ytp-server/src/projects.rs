@@ -11,7 +11,7 @@
 //!   the song through the same mixer and picture code as the full render.
 //!   Finished windows are cached on disk by what is in them.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -21,7 +21,7 @@ use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use tokio::sync::Semaphore;
 use ytp_auth::Quota;
-use ytp_core::{Error, Project, Result};
+use ytp_core::{Clip, ClipSource, Error, GeneratorKind, Project, Result, TrackKind};
 use ytp_media::FfmpegRenderer;
 use ytp_render::{Env, FullOptions, Kind, ProxyCache};
 use ytp_splice::{
@@ -212,6 +212,127 @@ pub async fn plan_ytpmv(st: &AppState, owner: i64, req: SongRequest, max_height:
     .await
 }
 
+// ── Generated clips ──────────────────────────────────────────────────────────
+
+fn is_generated(c: &Clip) -> bool {
+    matches!(c.source, ClipSource::Generated { .. })
+}
+
+/// Expand every `generated` clip into the clips its prompt makes, for this
+/// render only. The stored project keeps the generated clip untouched: nothing
+/// is written back and no revision changes. That is safe because the expansion
+/// is a function of the clip (its prompt, options and seed), so the same seed
+/// always cuts the same clips.
+///
+/// The expansion's real length wins: it replaces the host clip's authored
+/// `duration`, and every later clip on that track moves by the difference (in
+/// either direction). Nothing is trimmed or padded to fit.
+///
+/// Depth is one: a plan that itself asks for a generated clip is refused, and
+/// a generated clip on an audio track is refused for now.
+pub async fn expand_generated_clips(st: &AppState, mut project: Project) -> Result<Project> {
+    if !project.tracks.iter().any(|t| t.clips.iter().any(is_generated)) {
+        return Ok(project);
+    }
+    let (host_corpus, captions) = (project.corpus.clone(), project.captions);
+    let mut used: HashSet<String> = project.tracks.iter().flat_map(|t| t.clips.iter().map(|c| c.id.clone())).collect();
+    for ti in 0..project.tracks.len() {
+        if !project.tracks[ti].clips.iter().any(is_generated) {
+            continue;
+        }
+        if project.tracks[ti].kind == TrackKind::Audio {
+            let id = project.tracks[ti].clips.iter().find(|c| is_generated(c)).map_or("", |c| c.id.as_str());
+            return Err(Error::invalid(format!("clip {id}: a generated clip needs a video track for now")));
+        }
+        // An expansion moves everything after it, so walk the track in timeline
+        // order and carry the running difference.
+        let mut order: Vec<usize> = (0..project.tracks[ti].clips.len()).collect();
+        order.sort_by(|a, b| project.tracks[ti].clips[*a].start.total_cmp(&project.tracks[ti].clips[*b].start));
+        let mut out: Vec<Clip> = Vec::with_capacity(project.tracks[ti].clips.len());
+        let mut shift = 0.0;
+        for ci in order {
+            let clip = project.tracks[ti].clips[ci].clone();
+            let start = clip.start + shift;
+            let made = match &clip.source {
+                ClipSource::Generated { kind: GeneratorKind::Ytp, prompt, options, seed, corpus } => {
+                    // The clip's own seed is the one that counts; `plan_ytp`
+                    // reads it from the options it is handed.
+                    let mut options = options.clone();
+                    if !seed.is_empty() {
+                        match &mut options {
+                            Value::Object(o) => {
+                                o.insert("seed".into(), Value::String(seed.clone()));
+                            }
+                            _ => options = json!({ "seed": seed }),
+                        }
+                    }
+                    let voice = corpus.clone().filter(|c| !c.is_empty()).unwrap_or_else(|| host_corpus.clone());
+                    let (plan, _report) = plan_ytp(st, prompt.clone(), voice, captions, options)
+                        .await
+                        .map_err(|e| Error::invalid(format!("clip {}: {e}", clip.id)))?;
+                    expansion_clips(&clip, start, &plan)?
+                }
+                ClipSource::Generated { .. } => {
+                    return Err(Error::invalid(format!("clip {}: only a ytp generated clip can be expanded for now", clip.id)));
+                }
+                _ => {
+                    let mut kept = clip;
+                    kept.start = start;
+                    out.push(kept);
+                    continue;
+                }
+            };
+            let end = made.iter().map(Clip::end).fold(start, f64::max);
+            shift += (end - start) - clip.duration;
+            for mut c in made {
+                c.id = fresh_clip_id(&clip.id, &mut used);
+                out.push(c);
+            }
+        }
+        project.tracks[ti].clips = out;
+    }
+    // The checks downstream (MAX_CLIPS, quota seconds) see the expanded
+    // project, so it has to be sound on its own.
+    project.validate().map_err(Error::invalid)?;
+    Ok(project)
+}
+
+/// The clips one expansion puts in place of `host`, from the plan its prompt
+/// made: the plan's picture clips, moved to where the host sits (`start`, after
+/// earlier expansions on the track have moved it).
+///
+/// Depth 1: a plan that itself asks for a generated clip is refused.
+pub fn expansion_clips(host: &Clip, start: f64, plan: &Project) -> Result<Vec<Clip>> {
+    if plan.tracks.iter().flat_map(|t| t.clips.iter()).any(is_generated) {
+        return Err(Error::invalid("a generated clip cannot contain another generated clip yet"));
+    }
+    let made = plan
+        .tracks
+        .iter()
+        .find(|t| t.kind == TrackKind::Video && !t.clips.is_empty())
+        .ok_or_else(|| Error::invalid(format!("clip {}: its prompt made no picture to play", host.id)))?;
+    let mut clips = made.clips.clone();
+    clips.sort_by(|a, b| a.start.total_cmp(&b.start));
+    for c in &mut clips {
+        c.start += start;
+    }
+    Ok(clips)
+}
+
+/// A clip id derived from `host`'s, unique in `used`: two expansions cannot
+/// collide with each other or with the plan's own ids.
+fn fresh_clip_id(host: &str, used: &mut HashSet<String>) -> String {
+    let stem: String = host.chars().take(48).collect();
+    let mut k = 0usize;
+    loop {
+        let id = format!("{stem}_g{k}");
+        if used.insert(id.clone()) {
+            return id;
+        }
+        k += 1;
+    }
+}
+
 // ── The render job ───────────────────────────────────────────────────────────
 
 fn failed(msg: impl Into<String>) -> Outcome {
@@ -243,6 +364,12 @@ pub(crate) async fn run(st: &AppState, id: &str, rec: &JobRecord, quota: Quota, 
     };
     project.id = Some(pid);
     project.owner = Some(stored.meta.owner);
+    // Generated clips become the clips their prompts make, for this render
+    // only; the duration and clip-count checks below see the expanded project.
+    let project = match expand_generated_clips(st, project).await {
+        Ok(p) => p,
+        Err(e) => return failed(e.to_string()),
+    };
     let duration = project.duration();
     if duration > quota.max_render_seconds as f64 {
         return failed(format!("the video would be {duration:.1} s long; your limit is {} s", quota.max_render_seconds));
@@ -318,7 +445,10 @@ pub struct Preview {
 /// What a window shows, for the cache: the clips in it, the mixer, the
 /// corpora (by version) it draws on, the window. Edits elsewhere in the
 /// project do not change it.
-async fn preview_key(st: &AppState, p: &Project, owner: i64, start: f64, duration: f64) -> Result<String> {
+///
+/// Pass the project after [`expand_generated_clips`]: a `generated` clip still
+/// in the document would hash its authored length instead of the cut it makes.
+pub async fn preview_key(st: &AppState, p: &Project, owner: i64, start: f64, duration: f64) -> Result<String> {
     let mut corpora: Vec<String> = vec![p.corpus.clone()];
     let doc = match ytp_render::kind(p) {
         Kind::Song => {
@@ -395,6 +525,12 @@ pub async fn preview(st: &AppState, project: Project, owner: i64, start: f64, du
         return Err(Error::invalid("a preview needs start >= 0 and duration > 0"));
     }
     let duration = duration.min(PREVIEW_MAX_SECONDS);
+    // Expand before anything looks at the project: the window check, the cache
+    // key and the renderer all have to see the clips a prompt really makes. The
+    // key is hashed from the expanded clips (spans, corpora, effects, shifted
+    // starts), so two seeds cannot share a cached window and the same seed
+    // always hashes the same one.
+    let project = expand_generated_clips(st, project).await?;
     let total = project.duration();
     if start >= total + if ytp_render::kind(&project) == Kind::Song { 0.8 } else { 0.0 } || total <= 0.0 {
         return Err(Error::invalid("the window starts after the end of the project"));

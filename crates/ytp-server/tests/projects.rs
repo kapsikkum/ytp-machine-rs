@@ -538,3 +538,159 @@ async fn a_song_plan_has_a_track_per_part_and_plays_through_the_song_renderer() 
 async fn r_project(t: &TestApp, auth: &Auth, id: i64) -> Value {
     t.get(&format!("/api/projects/{id}"), auth).await.body["project"].clone()
 }
+
+// ── Generated clips: expanded at render time, never stored ───────────────────
+
+fn generated_clip(id: &str, start: f64, duration: f64, seed: &str, prompt: &str) -> Value {
+    json!({
+        "id": id, "start": start, "duration": duration,
+        "source": { "type": "generated", "kind": "ytp", "prompt": prompt, "seed": seed, "options": { "chaos": 1.0 } }
+    })
+}
+
+fn corpus_clip(id: &str, start: f64, duration: f64) -> Value {
+    json!({
+        "id": id, "start": start, "duration": duration,
+        "source": { "type": "corpus_clip", "corpus": "music", "clip_id": 1, "file": "downloads/v1.mp4", "in": 0.0, "out": 0.5 }
+    })
+}
+
+/// A project whose video track starts with a generated clip, then a real one
+/// that has to move when the expansion turns out longer (or shorter).
+fn with_generated(name: &str, seed: &str) -> Value {
+    json!({
+        "name": name, "corpus": "music", "captions": true,
+        "tracks": [{
+            "id": "video", "kind": "video", "name": "Video",
+            "clips": [generated_clip("host", 0.0, 0.2, seed, "hello world"), corpus_clip("after", 0.2, 0.5)]
+        }]
+    })
+}
+
+fn as_project(v: Value) -> ytp_core::Project {
+    serde_json::from_value(v).unwrap()
+}
+
+fn starts(p: &ytp_core::Project) -> Vec<(f64, f64)> {
+    p.tracks[0].clips.iter().map(|c| (c.start, c.duration)).collect()
+}
+
+#[tokio::test]
+async fn a_project_without_generated_clips_expands_to_itself_and_keys_the_same() {
+    let t = TestApp::new().await;
+    let p = as_project(doc("Plain"));
+    let key = ytp_server::projects::preview_key(&t.st, &p, 1, 0.0, 1.0).await.unwrap();
+    let expanded = ytp_server::projects::expand_generated_clips(&t.st, p.clone()).await.unwrap();
+    assert_eq!(expanded, p, "nothing to expand, nothing changed");
+    let after = ytp_server::projects::preview_key(&t.st, &expanded, 1, 0.0, 1.0).await.unwrap();
+    assert_eq!(after, key, "the fast path cannot change the preview window");
+}
+
+#[tokio::test]
+async fn a_generated_clip_expands_on_the_video_track_and_moves_what_follows() {
+    if !have_ffmpeg() {
+        eprintln!("ffmpeg is not on PATH; skipping");
+        return;
+    }
+    let (t, admin) = setup().await;
+    let authored = with_generated("Prompt", "42");
+    let expanded = ytp_server::projects::expand_generated_clips(&t.st, as_project(authored.clone())).await.unwrap();
+
+    let clips = &expanded.tracks[0].clips;
+    let made: Vec<&ytp_core::Clip> = clips.iter().filter(|c| c.id != "after").collect();
+    assert!(!made.is_empty(), "{clips:?}");
+    assert!(made.iter().all(|c| matches!(c.source, ytp_core::ClipSource::CorpusClip { .. })), "{clips:?}");
+    assert_eq!(made[0].start, 0.0);
+    assert!(clips.iter().all(|c| c.id != "host"), "the generated clip itself is gone");
+    // The expansion's real length is what the timeline uses, and the clip that
+    // followed sits right after it.
+    let made_end = clips.iter().filter(|c| c.id != "after").map(ytp_core::Clip::end).fold(0.0, f64::max);
+    let after = clips.iter().find(|c| c.id == "after").unwrap();
+    assert!(made_end > 0.2, "the authored 0.2 s clip really was replaced, not padded: {made_end}");
+    assert!((after.start - made_end).abs() < 1e-9, "after {} vs expansion end {made_end}", after.start);
+    expanded.validate().expect("the expanded project is sound");
+
+    // It renders: the preview plays a window of the prompt's clips, and the
+    // second identical window is a cache hit (the key is the expanded cut).
+    let r = t.post("/api/projects", &admin, json!({ "project": authored })).await;
+    assert_eq!(r.status, StatusCode::OK, "{:?}", r.body);
+    let id = r.body["id"].as_i64().unwrap();
+    for want in ["miss", "hit"] {
+        let r = raw(&t, Method::POST, "/api/preview", &admin, Some(json!({ "project_id": id, "start": 0.0, "duration": 1.0 }))).await;
+        assert_eq!(r.status, StatusCode::OK, "{}", String::from_utf8_lossy(&r.body[..r.body.len().min(300)]));
+        assert_eq!(r.headers["x-preview-cache"], want);
+        let p = probe_bytes(t.dir.path(), "generated-preview.mp4", &r.body);
+        assert!(p.has_video && p.has_audio);
+        let info: Value = serde_json::from_str(r.headers["x-preview-info"].to_str().unwrap()).unwrap();
+        assert_eq!(info["kind"], "sequence");
+        if want == "miss" {
+            assert!(info["clips"].as_u64().unwrap() >= 1, "{info}");
+        }
+    }
+
+    // The full render does the same, and the stored project is untouched: the
+    // expansion is ephemeral, revision and document included.
+    let job = t.post(&format!("/api/projects/{id}/render"), &admin, json!({})).await;
+    assert_eq!(job.status, StatusCode::OK, "{:?}", job.body);
+    let done = wait_job(&t, &admin, job.body["job_id"].as_str().unwrap()).await;
+    assert_eq!(done["state"], "done", "{done:?}");
+    assert!((done["duration"].as_f64().unwrap() - expanded.duration()).abs() < 0.1, "{} vs {}", done["duration"], expanded.duration());
+    let stored = t.get(&format!("/api/projects/{id}"), &admin).await;
+    assert_eq!(stored.body["revision"], 1);
+    assert_eq!(stored.body["project"]["tracks"][0]["clips"][0]["source"], authored["tracks"][0]["clips"][0]["source"]);
+}
+
+#[tokio::test]
+async fn an_expansion_that_asks_for_a_generated_clip_is_refused() {
+    let host = as_project(with_generated("Host", "42")).tracks[0].clips[0].clone();
+    let mut plan = as_project(doc("Plan"));
+    plan.tracks[0].clips[0].source = ytp_core::ClipSource::Generated {
+        kind: ytp_core::GeneratorKind::Ytp,
+        prompt: "deeper".into(),
+        options: json!({}),
+        seed: "9".into(),
+        corpus: None,
+    };
+    let err = ytp_server::projects::expansion_clips(&host, 0.0, &plan).unwrap_err();
+    assert!(matches!(err, ytp_core::Error::Invalid(_)), "a 422, not a panic: {err}");
+    assert!(err.to_string().contains("cannot contain another generated clip"), "{err}");
+}
+
+#[tokio::test]
+async fn a_generated_clip_on_an_audio_track_is_refused() {
+    let t = TestApp::new().await;
+    let p: ytp_core::Project = serde_json::from_value(json!({
+        "name": "Audio", "corpus": "music",
+        "tracks": [{ "id": "audio", "kind": "audio", "name": "Audio",
+            "clips": [generated_clip("g", 0.0, 0.5, "1", "hello")] }]
+    }))
+    .unwrap();
+    p.validate().unwrap();
+    let err = ytp_server::projects::expand_generated_clips(&t.st, p).await.unwrap_err();
+    assert!(matches!(err, ytp_core::Error::Invalid(_)), "a 422, not a panic: {err}");
+    assert!(err.to_string().contains("needs a video track"), "{err}");
+}
+
+#[tokio::test]
+async fn the_same_prompt_and_seed_expand_to_the_same_clip_times() {
+    if !have_ffmpeg() {
+        eprintln!("ffmpeg is not on PATH; skipping");
+        return;
+    }
+    let (t, _admin) = setup().await;
+    let expand = |seed: &str| {
+        let (st, p) = (t.st.clone(), as_project(with_generated("Prompt", seed)));
+        async move { ytp_server::projects::expand_generated_clips(&st, p).await.unwrap() }
+    };
+    let (first, again) = (expand("42").await, expand("42").await);
+    assert_eq!(starts(&first), starts(&again), "the same seed is the same cut");
+    assert_eq!(first, again, "ids and effects included");
+    assert!(first.duration() > 0.0);
+
+    // Another seed is another cut (with chaos on, it needs different random
+    // choices); what matters is that it expands soundly too.
+    let other = expand("43").await;
+    assert!(other.validate().is_ok());
+    assert!(other.tracks[0].clips.iter().all(|c| matches!(c.source, ytp_core::ClipSource::CorpusClip { .. })));
+    eprintln!("seed 42: {:?}\nseed 43: {:?}", starts(&first), starts(&other));
+}
