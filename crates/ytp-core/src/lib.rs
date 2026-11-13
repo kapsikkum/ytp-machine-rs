@@ -10,6 +10,6 @@ pub mod timeline;
 pub use error::{Error, Result};
 pub use event::{CorpusEvent, Event, JobState};
 pub use timeline::{
-    Caption, Clip, ClipSource, Effect, Generator, GeneratorKind, Project, SynthNote, Track, TrackKind,
-    PROJECT_VERSION,
+    Caption, Clip, ClipSource, Effect, Generator, GeneratorKind, Place, Project, SynthNote, Track,
+    TrackKind, PROJECT_VERSION,
 };

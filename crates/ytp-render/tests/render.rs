@@ -7,8 +7,7 @@ use std::process::Command;
 use std::sync::Arc;
 use std::time::Duration;
 
-use ytp_core::timeline::Place;
-use ytp_core::{Clip, ClipSource, Effect, Project, SynthNote, Track, TrackKind};
+use ytp_core::{Clip, ClipSource, Effect, Place, Project, SynthNote, Track, TrackKind};
 use ytp_media::{FfmpegRenderer, RenderJob, Renderer};
 use ytp_render::{render_full, render_preview, Env, FullOptions, ProxyCache};
 use ytp_splice::{project_from_plan, segment_of_clip, AudioCache, GenerationOptions, Locator, NoAudio, PlanInfo, Segment};

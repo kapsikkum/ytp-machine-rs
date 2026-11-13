@@ -10,8 +10,7 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 
-use ytp_core::timeline::Place;
-use ytp_core::{Clip, ClipSource, Effect, Project, Track, TrackKind};
+use ytp_core::{Clip, ClipSource, Effect, Place, Project, Track, TrackKind};
 use ytp_media::{RenderJob, Renderer};
 use ytp_splice::{segment_of_clip, AudioCache, GenerationOptions, Locator, NoAudio, Segment};
 
