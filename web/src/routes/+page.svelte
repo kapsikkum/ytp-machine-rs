@@ -4,7 +4,7 @@
   import { api, ApiError, errorText, type PreviewInfo } from '#lib/api.ts';
   import { can } from '#lib/auth.ts';
   import { ProjectHistory } from '#lib/history.ts';
-  import { mixOf, projectDuration, toTimelineTracks, type Effect, type Project, type ProjectMeta, type StoredProject } from '#lib/project.ts';
+  import { mixOf, projectDuration, toTimelineTracks, type Effect, type Place, type Project, type ProjectMeta, type StoredProject } from '#lib/project.ts';
   import { TRACK_COLORS, type Track, type TrackKind } from '#lib/timeline.ts';
   import { jobEvents, subscribeTopic } from '#lib/ws.ts';
   import TopBar from '#lib/components/TopBar.svelte';
@@ -154,6 +154,22 @@
     const clip = track?.clips.find((c) => c.id === clipId);
     if (!clip) return;
     clip.effects = effects;
+    dirty = true;
+    record();
+  }
+
+  // The picture-in-picture box of the selected clip: the panel offers fixed
+  // boxes only, so the server's place checks cannot be broken. Clearing the box
+  // is `undefined` (never written), which hands the clip back to the renderer's
+  // default. One snapshot per pick, exactly like an effects edit; the snapshot
+  // holds the whole project, so undo restores the previous box (or its absence).
+  function setPlace(place: Place | undefined) {
+    if (!project || !selectedClip) return;
+    const { track: trackId, clip: clipId } = selectedClip;
+    const track = project.tracks.find((t) => t.id === trackId);
+    const clip = track?.clips.find((c) => c.id === clipId);
+    if (!clip) return;
+    clip.place = place;
     dirty = true;
     record();
   }
@@ -491,7 +507,7 @@
       </span>
       <span class="meta">a clip may overlap one on its new track; that renders as picture-in-picture</span>
     </div>
-    <EffectsPanel clip={selection} editable={canWrite} onchange={setEffects} />
+    <EffectsPanel clip={selection} editable={canWrite} onchange={setEffects} onplace={setPlace} />
   {:else if project}
     <p class="meta">Select a clip in the timeline to edit its effects.</p>
   {/if}

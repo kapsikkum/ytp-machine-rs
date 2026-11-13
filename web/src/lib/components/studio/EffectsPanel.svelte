@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { clipLabel, type Effect, type ProjectClip } from '#lib/project.ts';
+  import { clipLabel, hasPicture, type Effect, type Place, type ProjectClip } from '#lib/project.ts';
 
   // Effects of the selected clip (crates/ytp-core/src/timeline.rs, `Effect`).
   // The panel never invents a name the server would reject: the glitch list is
@@ -8,11 +8,14 @@
   let {
     clip,
     editable = true,
-    onchange
+    onchange,
+    onplace
   }: {
     clip: ProjectClip;
     editable?: boolean;
     onchange: (effects: Effect[]) => void;
+    /** Sets or clears the clip's picture box; omitted = the block is read-only-ish. */
+    onplace?: (place: Place | undefined) => void;
   } = $props();
 
   type Numeric = 'speed' | 'stretch' | 'pitch' | 'volume' | 'fade_in' | 'fade_out' | 'pause';
@@ -35,6 +38,36 @@
     { type: 'mirror', label: 'flip' },
     { type: 'subword', label: 'subword' }
   ];
+
+  // Fixed boxes only: every value is a frame fraction in 0..=1 with w, h > 0,
+  // x + w <= 1 and y + h <= 1, so picking one can never fail the server's
+  // `Place::check` (crates/ytp-core/src/timeline.rs). No free numbers.
+  const PRESETS: { key: string; label: string; place?: Place }[] = [
+    { key: 'default', label: 'default' },
+    { key: 'top-left', label: '↖ top left', place: { x: 0, y: 0, w: 0.5, h: 0.5 } },
+    { key: 'top-right', label: '↗ top right', place: { x: 0.5, y: 0, w: 0.5, h: 0.5 } },
+    { key: 'bottom-left', label: '↙ bottom left', place: { x: 0, y: 0.5, w: 0.5, h: 0.5 } },
+    { key: 'bottom-right', label: '↘ bottom right', place: { x: 0.5, y: 0.5, w: 0.5, h: 0.5 } },
+    { key: 'top', label: 'top strip', place: { x: 0, y: 0, w: 1, h: 0.5 } },
+    { key: 'bottom', label: 'bottom strip', place: { x: 0, y: 0.5, w: 1, h: 0.5 } },
+    { key: 'left', label: 'left strip', place: { x: 0, y: 0, w: 0.5, h: 1 } },
+    { key: 'right', label: 'right strip', place: { x: 0.5, y: 0, w: 0.5, h: 1 } },
+    { key: 'full', label: 'full', place: { x: 0, y: 0, w: 1, h: 1 } }
+  ];
+
+  const samePlace = (a: Place | undefined, b: Place | undefined) =>
+    !a || !b
+      ? !a && !b
+      : (['x', 'y', 'w', 'h'] as const).every((k) => Math.abs(a[k] - b[k]) < 1e-9);
+
+  // The preset the clip is on, or '' for a box that came from elsewhere.
+  const placed = $derived(PRESETS.find((p) => samePlace(p.place, clip.place))?.key ?? '');
+
+  function usePlace(p: { place?: Place }) {
+    if (!editable || !onplace || samePlace(p.place, clip.place)) return;
+    warn = '';
+    onplace(p.place);
+  }
 
   let warn = $state('');
 
@@ -257,6 +290,23 @@
       {/if}
     </div>
   {/if}
+
+  {#if hasPicture(clip)}
+    <div class="place">
+      <div class="group">
+        <span class="glabel">picture in picture</span>
+        <div class="chips">
+          {#each PRESETS as p (p.key)}
+            <button type="button" class="chip" class:active={placed === p.key}
+                    aria-pressed={placed === p.key}
+                    disabled={!editable || !onplace}
+                    onclick={() => usePlace(p)}>{p.label}</button>
+          {/each}
+        </div>
+      </div>
+      <p class="hint">the box only shows where this clip overlaps a clip on another track; no box = the default box, bottom-right half</p>
+    </div>
+  {/if}
 </section>
 
 <style>
@@ -285,6 +335,10 @@
   .chip { font-size: .7rem; padding: .18rem .5rem; border-radius: 999px; color: var(--muted); }
   .chip:hover:not(:disabled) { color: var(--text); }
   .chip.glitch { border-style: dashed; }
+  .chip.active { color: var(--text); border-color: var(--muted); background: var(--line); }
+
+  .place { display: flex; flex-direction: column; gap: .4rem; border-top: 1px dashed var(--line); padding-top: .65rem; }
+  .hint { margin: 0; color: var(--dim); font-size: .7rem; }
 
   @media (max-width: 650px) {
     .row { grid-template-columns: minmax(0, 1fr) auto; }

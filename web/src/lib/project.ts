@@ -22,12 +22,22 @@ export type ClipSource =
   | { type: 'synth'; chip: string; notes: { start: number; dur: number; pitch: number; velocity: number }[] }
   | { type: 'generated'; kind: 'ytp' | 'ytpmv'; prompt: string; options: unknown; seed: string; corpus?: string };
 
+/** The box a clip's picture is drawn in, as frame fractions: x/y = top-left corner, w/h = size. */
+export interface Place {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
 export interface ProjectClip {
   id: string;
   start: number;
   duration: number;
   source: ClipSource;
   effects: Effect[];
+  /** Absent = the renderer's default box (half width, bottom-right). */
+  place?: Place;
   label?: string;
   caption?: { text: string; words: [string, number, number][] };
 }
@@ -84,6 +94,11 @@ export interface TrackMix {
   mute: boolean;
   solo: boolean;
   volume: number;
+}
+
+/** Does the source have a picture of its own? Mirrors `ClipSource::has_picture`: synth has none. */
+export function hasPicture(c: ProjectClip): boolean {
+  return c.source.type !== 'synth';
 }
 
 export function clipLabel(c: ProjectClip): string {
