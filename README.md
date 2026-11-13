@@ -47,6 +47,36 @@ For UI development with Vite on another port, allow its origin for the WebSocket
 Build the UI (`npm run build` in `web/`) before a release build of the server.
 If `web/build` is missing the server still compiles and shows a "UI not built" page.
 
+## Studio
+
+The Studio is the editor at `/`; `/?project=<id>` opens a saved project. On `/ytp` and
+`/ytpmv`, **Open in Studio** calls the plan endpoint (`POST /api/ytp/plan` /
+`POST /api/ytpmv/plan` with `save: true`) and takes you to the new project, so nothing
+renders until you ask for it. Projects are listed at `GET /api/projects`; saving goes
+through `PATCH /api/projects/:id` with the `revision` you loaded, so a stale edit is
+refused instead of overwriting someone else's.
+
+Playback is a preview, not a stream: `POST /api/preview` returns one finished MP4 per aligned
+window (the Studio asks for 8 s, the API allows up to 30), and the next one is fetched while the
+current one plays. Windows
+are cached on disk: song windows render at about 10× realtime, a YTP window takes 1–2.5 s
+the first time and 1–60 ms once cached.
+
+Editing is per track (mute/solo) with an effects panel for the selected clip: speed
+(0.1–10), stretch (0.1–16), pitch (±48 semitones), volume (−80..40 dB), fades and pauses
+(0–60 s), reverse, stutter, flip, subword, and the 11 glitches. The server checks every
+value. Undo/redo is on the toolbar and on Ctrl+Z, Ctrl+Shift+Z and Ctrl+Y, with a bounded
+200-state history (`History` in `crates/ytp-core/src/history.rs`).
+
+To keep a result at full quality, **export** on a finished `/ytp` or `/ytpmv` result
+starts `POST /api/jobs/:id/export` with a preset from `GET /api/encode/presets`; the file
+is served at `GET /api/jobs/:id/result`. `hq` presets need the `export.hq` permission and
+are greyed out without it. A whole project renders with `POST /api/projects/:id/render`.
+
+Known limits: overlapping video clips on one track are refused, `generated` clip sources
+cannot render yet, song projects are editable at track level only (notes are read-only),
+and preview windows show the track mix rather than every per-clip effect.
+
 ## Chat bots
 
 `serve` can also run a Matrix bot and a Discord bot in the same process. Neither is needed; each
