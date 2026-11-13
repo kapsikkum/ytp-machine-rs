@@ -1,5 +1,9 @@
 /target
 /data
+/data-smoke
 web/node_modules
 web/build
 web/.svelte-kit
+
+# private agent memory, never part of the project
+MEMORY.md
