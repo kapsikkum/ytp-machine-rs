@@ -12,6 +12,7 @@
     playhead = $bindable(0),
     onselect,
     onselectclip,
+    onclipmove,
     onflag,
     empty = 'No tracks yet.'
   }: {
@@ -22,6 +23,8 @@
     playhead?: number;
     onselect?: (id: string) => void;
     onselectclip?: (track: string, clip: string) => void;
+    /** A drag or trim, already clamped: new start and length, seconds. */
+    onclipmove?: (track: string, clip: string, start: number, length: number) => void;
     onflag?: (id: string, flag: 'mute' | 'solo') => void;
     empty?: string;
   } = $props();
@@ -52,9 +55,85 @@
     const x = e.clientX - el.getBoundingClientRect().left;
     playhead = Math.min(duration, Math.max(0, x / pps));
   }
+
+  // Dragging a clip: the body moves it, either edge trims it. The page is told
+  // one clean start/length per movement; the clamp here keeps the clip at least
+  // MIN long, inside the project, and inside its own gap on the track (the
+  // server rejects overlapping clips on one track).
+  const MIN = 0.05;
+
+  let drag: { mode: 'move' | 'in' | 'out'; track: Track; clip: string; start: number; length: number; x: number } | null = null;
+  let moved = false;
+  let swallow = false;
+  let sent = '';
+
+  const clamp = (v: number, lo: number, hi: number) => Math.min(Math.max(v, lo), hi);
+  const round = (v: number) => Math.round(v * 1000) / 1000;
+
+  // Room on the track around where the clip was, between its neighbours.
+  function room(track: Track, id: string, start: number, end: number): { lo: number; hi: number } {
+    let lo = 0;
+    // The ruler grows with the project, so the last clip may still extend.
+    let hi = Math.max(duration, end);
+    for (const o of track.clips ?? []) {
+      if (o.id === id) continue;
+      const oEnd = o.start + o.length;
+      if (oEnd <= start + 1e-9) lo = Math.max(lo, oEnd);
+      else if (o.start >= end - 1e-9) hi = Math.min(hi, o.start);
+    }
+    lo = Math.max(0, lo);
+    return { lo, hi: Math.max(lo, hi) };
+  }
+
+  function begin(e: PointerEvent, track: Track, clip: Clip) {
+    onselect?.(track.id);
+    onselectclip?.(track.id, clip.id);
+    if (!onclipmove) return;
+    const el = e.currentTarget as HTMLElement;
+    const rect = el.getBoundingClientRect();
+    const edge = Math.min(5, rect.width / 3);
+    const off = e.clientX - rect.left;
+    const mode = off <= edge ? 'in' : off >= rect.width - edge ? 'out' : 'move';
+    drag = { mode, track, clip: clip.id, start: clip.start, length: clip.length, x: e.clientX };
+    moved = false;
+    sent = '';
+    el.setPointerCapture?.(e.pointerId);
+  }
+
+  function move(e: PointerEvent) {
+    if (!drag || !onclipmove) return;
+    if (!moved && Math.abs(e.clientX - drag.x) < 3) return; // a click, not a drag
+    moved = true;
+    const { track, clip, start, length, mode } = drag;
+    const end = start + length;
+    const { lo, hi } = room(track, clip, start, end);
+    const dx = (e.clientX - drag.x) / pps;
+    let s = start;
+    let l = length;
+    if (mode === 'move') {
+      s = clamp(round(start + dx), lo, Math.max(lo, hi - length));
+    } else if (mode === 'in') {
+      s = clamp(round(start + dx), lo, Math.max(lo, end - MIN));
+      l = end - s;
+    } else {
+      l = clamp(round(end + dx) - start, MIN, hi - start);
+    }
+    const key = `${s}/${l}`;
+    if (key === sent) return;
+    sent = key;
+    onclipmove(track.id, clip, s, l);
+  }
+
+  function end(e: PointerEvent) {
+    const el = e.currentTarget as HTMLElement;
+    if (el.hasPointerCapture?.(e.pointerId)) el.releasePointerCapture(e.pointerId);
+    swallow = moved;
+    moved = false;
+    drag = null;
+  }
 </script>
 
-<div class="timeline">
+<div class="timeline" class:draggable={!!onclipmove}>
   <div class="toolbar">
     <div class="actions">
       <label class="zoom">zoom
@@ -94,7 +173,11 @@
             {#each inView(t.clips) as c (c.id)}
               <button type="button" class="clip" class:selected={selectedClip === c.id} style:left="{c.start * pps}px" style:width="{Math.max(6, c.length * pps)}px" title={c.label}
                       aria-pressed={selectedClip === c.id}
-                      onpointerdown={(e) => e.stopPropagation()} onclick={() => { onselect?.(t.id); onselectclip?.(t.id, c.id); }}>{c.label}</button>
+                      onpointerdown={(e) => { e.stopPropagation(); begin(e, t, c); }}
+                      onpointermove={move}
+                      onpointerup={end}
+                      onpointercancel={end}
+                      onclick={() => { if (swallow) { swallow = false; return; } onselect?.(t.id); onselectclip?.(t.id, c.id); }}>{c.label}</button>
             {/each}
             {#if t.notes?.length}
               <svg viewBox="0 0 {width} 100" preserveAspectRatio="none" aria-hidden="true">
@@ -176,6 +259,12 @@
   .clip:hover:not(:disabled) { background: color-mix(in srgb, var(--track-color) 34%, var(--surface)); border-color: var(--track-color); }
   .clip.selected { color: #000; background: var(--yellow); border-color: var(--yellow); }
   .clip.selected:hover:not(:disabled) { background: var(--yellow-2); border-color: var(--yellow-2); }
+  .clip { touch-action: none; user-select: none; }
+  .draggable .clip { cursor: grab; }
+  .draggable .clip:active { cursor: grabbing; }
+  .clip::before, .clip::after { content: ''; position: absolute; top: 0; bottom: 0; width: 6px; cursor: col-resize; }
+  .clip::before { left: 0; }
+  .clip::after { right: 0; }
   .region svg { position: absolute; inset: 0; width: 100%; height: 100%; display: block; background: color-mix(in srgb, var(--track-color) 8%, transparent); }
   .region rect { fill: currentColor; stroke: currentColor; stroke-width: .5px; }
 

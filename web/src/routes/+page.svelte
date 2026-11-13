@@ -64,6 +64,7 @@
     playing = false;
     selectedClip = null;
     note = '';
+    cancelMove();
     if (id === null) {
       if ($can('project.read')) api.projects.list().then((l) => (recent = l)).catch(() => (recent = []));
       return;
@@ -136,6 +137,36 @@
     record();
   }
 
+  // A clip dragged or trimmed on the timeline. The move lands in the project
+  // and marks it unsaved; a drag fires many events, so one undo snapshot is
+  // taken once the pointer settles instead of one per pixel.
+  let moveTimer: ReturnType<typeof setTimeout> | undefined;
+
+  function moveClip(trackId: string, clipId: string, start: number, length: number) {
+    if (!project) return;
+    const track = project.tracks.find((t) => t.id === trackId);
+    const clip = track?.clips.find((c) => c.id === clipId);
+    if (!clip || !Number.isFinite(start) || !Number.isFinite(length)) return;
+    const s = Math.max(0, start);
+    const d = Math.max(0.05, length);
+    if (s === clip.start && d === clip.duration) return;
+    clip.start = s;
+    clip.duration = d;
+    dirty = true;
+    if (moveTimer !== undefined) clearTimeout(moveTimer);
+    moveTimer = setTimeout(() => {
+      moveTimer = undefined;
+      record();
+    }, 250);
+  }
+
+  // An undo/redo cancels a snapshot still waiting on that timer.
+  function cancelMove() {
+    if (moveTimer === undefined) return;
+    clearTimeout(moveTimer);
+    moveTimer = undefined;
+  }
+
   function flag(id: string, f: 'mute' | 'solo') {
     if (!project) {
       const t = localTracks.find((x) => x.id === id);
@@ -165,6 +196,7 @@
 
   function undo() {
     if (!project || !history) return;
+    cancelMove();
     const p = history.undo();
     if (!p) return;
     project = p;
@@ -174,6 +206,7 @@
 
   function redo() {
     if (!project || !history) return;
+    cancelMove();
     const p = history.redo();
     if (!p) return;
     project = p;
@@ -342,6 +375,7 @@
     <Timeline {tracks} {duration} {selected} selectedClip={selectedClip?.clip ?? null} bind:playhead
               onselect={(id) => { selected = id; if (selectedClip && selectedClip.track !== id) selectedClip = null; }}
               onselectclip={(track, clip) => { selected = track; selectedClip = { track, clip }; }}
+              onclipmove={canWrite ? moveClip : undefined}
               onflag={flag} empty="Add a track to begin." />
   </div>
 
