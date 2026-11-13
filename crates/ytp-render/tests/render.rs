@@ -308,6 +308,80 @@ fn clips_on_different_video_tracks_are_composited_picture_in_picture() {
     assert!(pr.has_video);
 }
 
+/// Scratch files in the work dir whose name starts with `tag-`.
+fn scratches(work: &Path, tag: &str) -> Vec<String> {
+    let prefix = format!("{tag}-");
+    match std::fs::read_dir(work) {
+        Ok(rd) => rd
+            .flatten()
+            .map(|e| e.file_name().to_string_lossy().into_owned())
+            .filter(|n| n.starts_with(&prefix))
+            .collect(),
+        Err(_) => Vec::new(),
+    }
+}
+
+/// A per-layer `pip-<k>-<pid>-<n>.mp4`, as opposed to the composite
+/// `pip-<pid>-<n>.mp4`.
+fn is_layer_scratch(name: &str) -> bool {
+    let stem = name.strip_suffix(".mp4").unwrap_or(name);
+    let parts: Vec<&str> = stem.split('-').collect();
+    parts.len() == 4 && parts[0] == "pip" && parts[1].parse::<u32>().is_ok()
+}
+
+#[test]
+fn a_composite_leaves_no_pip_scratch_behind() {
+    let Some(w) = World::new() else { return };
+    let corpus = w.dir.path().join("corpus").join("downloads");
+    make_colour(&corpus, "green.mp4", "lime");
+    make_colour(&corpus, "red.mp4", "red");
+
+    // The same shape as the picture-in-picture test: two tracks playing at once.
+    let mut p = Project::new("pip-scratch");
+    let mut under = video_track(&[("downloads/green.mp4", 0.0, 2.0, 0.0, 2.0)], &w);
+    under.clips[0].id = "under".into();
+    let mut over = video_track(&[("downloads/red.mp4", 0.5, 1.0, 0.0, 1.0)], &w);
+    over.id = "v2".into();
+    over.name = "Over".into();
+    over.clips[0].id = "over".into();
+    p.tracks.push(under);
+    p.tracks.push(over);
+    p.validate().unwrap();
+
+    // Planning makes the composite the render will read. The per-layer files
+    // are only inputs to the mux and are gone by the time the plan is handed
+    // over, while the composite has to survive that long.
+    let env = w.env();
+    let seq = ytp_render::sequence::plan(&env, &p, None).unwrap();
+    let composites: Vec<PathBuf> = seq
+        .segments
+        .iter()
+        .map(|s| PathBuf::from(&s.source_file))
+        .filter(|f| f.starts_with(&w.work) && f.file_name().is_some_and(|n| n.to_string_lossy().starts_with("pip-")))
+        .collect();
+    assert_eq!(composites.len(), 1, "the project did not go through the compositor");
+    assert!(composites[0].is_file(), "the composite the render reads is missing");
+    let left = scratches(&w.work, "pip");
+    let layers: Vec<&String> = left.iter().filter(|n| is_layer_scratch(n)).collect();
+    assert!(layers.is_empty(), "the per-layer mux inputs were left behind: {layers:?}");
+    drop(seq);
+    assert!(!composites[0].exists(), "the composite outlived the plan that made it");
+
+    // A full render and a preview both go through the compositor; neither may
+    // leave any pip file in the work dir.
+    let out = w.dir.path().join("pip-scratch.mp4");
+    full(&w, &p, &out);
+    assert!(out.is_file(), "the render wrote no output");
+    let left = scratches(&w.work, "pip");
+    assert!(left.is_empty(), "the render left scratch files behind: {left:?}");
+
+    let pv = w.dir.path().join("pip-scratch-preview.mp4");
+    render_preview(&w.env(), &p, 0.2, 1.0, &pv, None, &|| true).unwrap();
+    assert!(pv.is_file(), "the preview wrote no output");
+    let left = scratches(&w.work, "pip");
+    assert!(left.is_empty(), "the preview left scratch files behind: {left:?}");
+}
+
 /// A 480x270 project: a green bottom layer for two seconds and a red layer of
 /// one second from 0.5 s over it, at `place` (or the default box with `None`).
 fn placed_project(w: &World, place: Option<Place>) -> Project {

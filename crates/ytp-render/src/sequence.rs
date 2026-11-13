@@ -53,6 +53,33 @@ pub struct Sequence {
     pub skip: f64,
     /// Seconds to keep after `skip`.
     pub length: f64,
+    /// The scratch files this plan made. A composite is read by the render
+    /// that plays the plan, so it has to live as long as the plan does and is
+    /// removed with it.
+    #[allow(dead_code)] // held only so its `Drop` runs with the plan
+    made: Made,
+}
+
+/// Scratch files a plan owns, removed when the plan is. Only files this plan
+/// created are listed, so another render sharing the work directory never
+/// loses one of its own.
+#[derive(Default)]
+struct Made {
+    files: Vec<PathBuf>,
+}
+
+impl Made {
+    fn keep(&mut self, path: &Path) {
+        self.files.push(path.to_path_buf());
+    }
+}
+
+impl Drop for Made {
+    fn drop(&mut self) {
+        for f in &self.files {
+            let _ = std::fs::remove_file(f);
+        }
+    }
 }
 
 impl Env<'_> {
@@ -216,11 +243,12 @@ fn layered<'a>(
     spans: &[((f64, f64), Vec<usize>)],
     frame: (u32, u32),
     captions: bool,
+    made: &mut Made,
 ) -> Result<Vec<Piece<'a>>, Error> {
     let mut pieces: Vec<Piece<'a>> = Vec::new();
     for ((a, b), set) in spans {
         let layers: Vec<&VItem> = set.iter().map(|&k| &items[k]).collect();
-        let seg = composite(env, *a, b - a, &layers, frame, captions)?;
+        let seg = composite(env, *a, b - a, &layers, frame, captions, made)?;
         pieces.push(Piece { start: *a, dur: b - a, seg, clip: None, own: true });
     }
     for (k, it) in items.iter().enumerate() {
@@ -242,14 +270,14 @@ fn layered<'a>(
             if spans.iter().any(|((x, y), set)| set.contains(&k) && a >= *x - 1e-9 && b <= *y + 1e-9) {
                 continue;
             }
-            pieces.push(piece_of(env, it, a, b, frame, captions)?);
+            pieces.push(piece_of(env, it, a, b, frame, captions, made)?);
         }
     }
     Ok(pieces)
 }
 
 /// `[start, end)` of clip `it` as a piece of the run.
-fn piece_of<'a>(env: &Env, it: &VItem<'a>, a: f64, b: f64, frame: (u32, u32), captions: bool) -> Result<Piece<'a>, Error> {
+fn piece_of<'a>(env: &Env, it: &VItem<'a>, a: f64, b: f64, frame: (u32, u32), captions: bool, made: &mut Made) -> Result<Piece<'a>, Error> {
     if a <= it.start + 1e-9 && b >= it.start + it.dur - 1e-9 {
         return Ok(Piece { start: it.start, dur: it.dur, seg: it.seg.clone(), clip: Some(it.clip), own: false });
     }
@@ -262,7 +290,7 @@ fn piece_of<'a>(env: &Env, it: &VItem<'a>, a: f64, b: f64, frame: (u32, u32), ca
         seg.length = Some(b - a);
         return Ok(Piece { start: a, dur: b - a, seg, clip: None, own: false });
     }
-    let seg = composite(env, a, b - a, &[it], frame, captions)?;
+    let seg = composite(env, a, b - a, &[it], frame, captions, made)?;
     Ok(Piece { start: a, dur: b - a, seg, clip: None, own: true })
 }
 
@@ -273,7 +301,7 @@ fn piece_of<'a>(env: &Env, it: &VItem<'a>, a: f64, b: f64, frame: (u32, u32), ca
 ///
 /// `captions` burns each layer's own caption into that layer's file before it
 /// is scaled and overlaid, so the text travels with its picture.
-fn composite(env: &Env, start: f64, dur: f64, layers: &[&VItem], frame: (u32, u32), captions: bool) -> Result<Segment, Error> {
+fn composite(env: &Env, start: f64, dur: f64, layers: &[&VItem], frame: (u32, u32), captions: bool, made: &mut Made) -> Result<Segment, Error> {
     std::fs::create_dir_all(env.work_dir).map_err(|e| Error::Failed(format!("cannot make {}: {e}", env.work_dir.display())))?;
     let options = GenerationOptions::default();
     let audio = AudioCache::new(&NoAudio);
@@ -294,6 +322,9 @@ fn composite(env: &Env, start: f64, dur: f64, layers: &[&VItem], frame: (u32, u3
             d0
         };
         let path = scratch(env, &format!("pip-{k}"));
+        // Removed right after the mux below; `made` is only the backstop if a
+        // layer render or the mux fails part-way.
+        made.keep(&path);
         let job = RenderJob {
             segments: std::slice::from_ref(&seg),
             options: &options,
@@ -310,8 +341,12 @@ fn composite(env: &Env, start: f64, dur: f64, layers: &[&VItem], frame: (u32, u3
         offsets.push(offset);
     }
     let path = scratch(env, "pip");
+    made.keep(&path);
     let places: Vec<Option<Place>> = layers.iter().map(|it| it.clip.place.clone()).collect();
     let done = overlay_layers(env, &files, &offsets, &places, dur, frame, &path);
+    // The layer files are only inputs to the mux above, which has returned:
+    // free them now rather than holding several full renders on disk. The
+    // composite `path` is the plan's own file and goes with the plan.
     for f in &files {
         let _ = std::fs::remove_file(f);
     }
@@ -495,10 +530,13 @@ pub fn plan(env: &Env, project: &Project, window: Option<(f64, f64)>) -> Result<
     // Overlaps across tracks become composites; clips are cut around them.
     let frame = (project.width, project.height);
     let spans = spans_of(&items);
+    // Composites made below are the plan's own files: the render reads them
+    // after `plan` returns, so nothing but the plan may remove them.
+    let mut made = Made::default();
     let mut pieces: Vec<Piece> = if spans.is_empty() {
         items.into_iter().map(|it| Piece { start: it.start, dur: it.dur, seg: it.seg, clip: Some(it.clip), own: false }).collect()
     } else {
-        layered(env, &items, &spans, frame, project.captions)?
+        layered(env, &items, &spans, frame, project.captions, &mut made)?
     };
     pieces.sort_by(|a, b| a.start.total_cmp(&b.start));
 
@@ -562,5 +600,5 @@ pub fn plan(env: &Env, project: &Project, window: Option<(f64, f64)>) -> Result<
             overlays.push(overlay::overlay_of(env, clip, gain)?);
         }
     }
-    Ok(Sequence { segments, overlays, base_t0, skip, length })
+    Ok(Sequence { segments, overlays, base_t0, skip, length, made })
 }
