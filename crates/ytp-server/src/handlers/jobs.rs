@@ -148,11 +148,13 @@ pub async fn result(
         "mkv" => "video/x-matroska",
         _ => "video/mp4",
     };
-    let mut res = ServeFile::new(path)
-        .oneshot(req)
-        .await
-        .map_err(|e| ApiError::from(Error::internal(e)))?
-        .into_response();
+    // `ServeFile` is infallible (tower-http 0.6 boxes its own I/O failures into a 500
+    // response), so there is no service error left to convert into an `ApiError`.
+    let res = match ServeFile::new(path).oneshot(req).await {
+        Ok(res) => res,
+        Err(never) => match never {},
+    };
+    let mut res = res.into_response();
     let h = res.headers_mut();
     h.insert(header::CONTENT_TYPE, HeaderValue::from_static(mime));
     h.insert(
