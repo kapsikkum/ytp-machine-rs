@@ -3,6 +3,7 @@
 
 pub mod error;
 pub mod event;
+pub mod history;
 pub mod time;
 pub mod timeline;
 
