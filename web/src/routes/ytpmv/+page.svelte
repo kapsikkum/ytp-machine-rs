@@ -21,6 +21,7 @@ import { onDestroy, onMount, untrack } from 'svelte';
   import TrackInspector from '#lib/components/ytpmv/TrackInspector.svelte';
   import SongOptions, { type RenderOptions } from '#lib/components/ytpmv/SongOptions.svelte';
   import VideoPreview from '#lib/components/ytpmv/VideoPreview.svelte';
+  import ExportDialog from '#lib/components/ExportDialog.svelte';
 
   let view = $state<'editor' | 'library'>('library');
   let mode = $state<'advanced' | 'simple'>(storage.get<string>('ytpmv-mode', 'advanced') === 'simple' ? 'simple' : 'advanced');
@@ -53,6 +54,7 @@ import { onDestroy, onMount, untrack } from 'svelte';
   let renderError = $state(false);
   let jobId = $state<string | null>(null);
   let job = $state<JobRecord | null>(null);
+  let exporting = $state(false);
 
   let chip = $state('');
   let layout = $state('balanced');
@@ -123,6 +125,7 @@ import { onDestroy, onMount, untrack } from 'svelte';
     playhead = 0;
     job = null;
     jobId = null;
+    exporting = false;
     renderStatus = '';
     status = '';
     view = 'editor';
@@ -398,6 +401,7 @@ import { onDestroy, onMount, untrack } from 'svelte';
     renderStatus = 'asking the server…';
     job = null;
     jobId = null;
+    exporting = false;
     clearInterval(poll);
     try {
       const r = await api.ytpmv.render({
@@ -533,6 +537,7 @@ import { onDestroy, onMount, untrack } from 'svelte';
             <video src={job.result_url} controls playsinline preload="metadata"><track kind="captions" /></video>
             <div class="line">
               <span>{summary}</span>
+              {#if job.id}<button type="button" class="btn" title="Re-encode this video with another preset" onclick={() => (exporting = true)}>⇥ export…</button>{/if}
               <a class="btn" href={job.result_url} download="{song.title || 'ytpmv'}.mp4">download</a>
         {#if $can('studio.use') && $can('project.write')}
           <button type="button" class="btn" disabled={openingStudio} onclick={openInStudio}>{openingStudio ? 'Opening…' : 'Open in Studio'}</button>
@@ -542,6 +547,10 @@ import { onDestroy, onMount, untrack } from 'svelte';
             {#each job.warnings as w, i (i)}<p class="warn">{w}</p>{/each}
           </div>
         {/key}
+      {/if}
+
+      {#if exporting && jobId}
+        <ExportDialog job_id={jobId} onclose={() => (exporting = false)} />
       {/if}
     </section>
   {/if}
