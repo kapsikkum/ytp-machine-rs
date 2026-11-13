@@ -131,6 +131,38 @@
     selected = null;
   }
 
+  // The selected track, when it can host a generated clip: the server expands
+  // one on a video track only (crates/ytp-server/src/projects.rs).
+  const videoTrack = $derived(project?.tracks.find((t) => t.id === selected && t.kind === 'video') ?? null);
+
+  // A generated clip is the cheapest clip to author: a prompt and a seed, and
+  // the server cuts it at render/preview time. Its duration here is only a
+  // placeholder - the expansion's real length wins and later clips on the track
+  // shift to fit - so the panel says that instead of pretending to know the
+  // length. Only `ytp` is offered: the server expands no other kind yet.
+  const GENERATED_PLACEHOLDER = 2;
+  function addGeneratedClip() {
+    const track = videoTrack;
+    if (!project || !canWrite || !track) return;
+    const used = new Set(project.tracks.flatMap((t) => t.clips.map((c) => c.id)));
+    // The id style plans use (crates/ytp-splice/src/project.rs: `c{i}`), first free.
+    let n = 0;
+    while (used.has(`c${n}`)) n += 1;
+    const id = `c${n}`;
+    const start = Number.isFinite(playhead) ? Math.max(0, playhead) : 0;
+    track.clips.push({
+      id,
+      start,
+      duration: GENERATED_PLACEHOLDER,
+      source: { type: 'generated', kind: 'ytp', prompt: '', options: {}, seed: '', corpus: undefined },
+      effects: []
+    });
+    selected = track.id;
+    selectedClip = { track: track.id, clip: id };
+    dirty = true;
+    record();
+  }
+
   const tracks = $derived<Track[]>(project ? toTimelineTracks(project) : localTracks);
   const duration = $derived(project ? Math.max(1, projectDuration(project) + (stored?.kind === 'song' ? 0.8 : 0)) : 30);
   const canWrite = $derived(!!stored && stored.access !== 'read' && $can('project.write'));
@@ -170,6 +202,24 @@
     const clip = track?.clips.find((c) => c.id === clipId);
     if (!clip) return;
     clip.place = place;
+    dirty = true;
+    record();
+  }
+
+  // The whole source of a generated clip is its prompt and seed: the panel has
+  // already clamped both to what the server accepts (4000 characters, a seed of
+  // at most 64 printable bytes), so this only stores them. The source object is
+  // replaced, as `setEffects` replaces the effects array, and one snapshot is
+  // taken per committed edit.
+  function setGenerated(field: 'prompt' | 'seed', value: string) {
+    if (!project || !selectedClip) return;
+    const { track: trackId, clip: clipId } = selectedClip;
+    const track = project.tracks.find((t) => t.id === trackId);
+    const clip = track?.clips.find((c) => c.id === clipId);
+    if (!clip || clip.source.type !== 'generated') return;
+    const source = clip.source;
+    if (source[field] === value) return;
+    clip.source = field === 'prompt' ? { ...source, prompt: value } : { ...source, seed: value };
     dirty = true;
     record();
   }
@@ -486,6 +536,14 @@
           <button type="button" disabled={tooManyTracks} onclick={() => addTrack('audio')}>+ music</button>
         </span>
       {/if}
+      {#if project}
+        <span class="add">
+          add clip
+          <button type="button" disabled={!canWrite || !videoTrack}
+                  title={!canWrite ? 'Read-only access' : videoTrack ? 'A generated clip: a prompt and a seed, cut when it renders' : 'Select a video track first'}
+                  onclick={addGeneratedClip}>+ generated</button>
+        </span>
+      {/if}
     </div>
     <Timeline {tracks} {duration} {selected} selectedClip={selectedClip?.clip ?? null} bind:playhead
               onselect={(id) => { selected = id; if (selectedClip && selectedClip.track !== id) selectedClip = null; }}
@@ -507,7 +565,7 @@
       </span>
       <span class="meta">a clip may overlap one on its new track; that renders as picture-in-picture</span>
     </div>
-    <EffectsPanel clip={selection} editable={canWrite} onchange={setEffects} onplace={setPlace} />
+    <EffectsPanel clip={selection} editable={canWrite} onchange={setEffects} onplace={setPlace} ongenerated={setGenerated} />
   {:else if project}
     <p class="meta">Select a clip in the timeline to edit its effects.</p>
   {/if}

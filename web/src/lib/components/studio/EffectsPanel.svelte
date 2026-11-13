@@ -9,13 +9,16 @@
     clip,
     editable = true,
     onchange,
-    onplace
+    onplace,
+    ongenerated
   }: {
     clip: ProjectClip;
     editable?: boolean;
     onchange: (effects: Effect[]) => void;
     /** Sets or clears the clip's picture box; omitted = the block is read-only-ish. */
     onplace?: (place: Place | undefined) => void;
+    /** Sets a generated clip's prompt or seed; omitted = the block is read-only-ish. */
+    ongenerated?: (field: 'prompt' | 'seed', value: string) => void;
   } = $props();
 
   type Numeric = 'speed' | 'stretch' | 'pitch' | 'volume' | 'fade_in' | 'fade_out' | 'pause';
@@ -212,6 +215,26 @@
     next.splice(index, 1);
     onchange(next);
   }
+
+  // The server's limits for a generated clip (crates/ytp-core/src/timeline.rs):
+  // a prompt of at most 4000 characters, and a seed of at most 64 bytes with no
+  // control characters. The prompt's maxlength is in code units, the seed's is
+  // trimmed by bytes; anything trimmed is written back so the field shows what
+  // will be saved.
+  function generated(field: 'prompt' | 'seed', raw: string, el: HTMLInputElement | HTMLTextAreaElement) {
+    if (!editable || !ongenerated) return;
+    const source = clip.source;
+    if (source.type !== 'generated') return;
+    const value = field === 'prompt' ? raw.slice(0, 4000) : seed(raw);
+    if (value !== raw) el.value = value;
+    if (value !== source[field]) ongenerated(field, value);
+  }
+
+  function seed(raw: string): string {
+    let s = raw.replace(/[\u0000-\u001F\u007F-\u009F]/g, '');
+    while (new TextEncoder().encode(s).length > 64) s = [...s].slice(0, -1).join('');
+    return s;
+  }
 </script>
 
 <section class="card effects" aria-label="Effects of the selected clip">
@@ -224,6 +247,28 @@
 
   {#if warn}
     <p class="warn" role="alert">{warn}</p>
+  {/if}
+
+  {#if clip.source.type === 'generated'}
+    {@const g = clip.source}
+    <div class="place">
+      <div class="group">
+        <span class="glabel">prompt</span>
+        <textarea rows="3" maxlength="4000" disabled={!editable || !ongenerated}
+                  aria-label="Prompt of the generated clip" placeholder="what this clip should say"
+                  value={g.prompt}
+                  onchange={(ev) => generated('prompt', ev.currentTarget.value, ev.currentTarget)}></textarea>
+      </div>
+      <div class="group">
+        <span class="glabel">seed</span>
+        <input type="text" maxlength="64" disabled={!editable || !ongenerated}
+               aria-label="Seed of the generated clip" placeholder="empty = a new seed each time"
+               value={g.seed}
+               onchange={(ev) => generated('seed', ev.currentTarget.value, ev.currentTarget)} />
+      </div>
+      <p class="hint">the length is decided when it renders; later clips shift to fit</p>
+      <p class="hint">renders from the project's corpus unless a corpus is set</p>
+    </div>
   {/if}
 
   {#if clip.effects.length}
