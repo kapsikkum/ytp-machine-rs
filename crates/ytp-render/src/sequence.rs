@@ -254,7 +254,8 @@ fn piece_of<'a>(env: &Env, it: &VItem<'a>, a: f64, b: f64) -> Result<Piece<'a>, 
 
 /// Play `start..start + dur` of every layer as one file: the first layer is the
 /// picture, each later track is laid over it, scaled to half the width and put
-/// at the bottom right. The first layer's sound is kept.
+/// at the bottom right. Every layer's sound is mixed, so the ones above are
+/// heard too.
 fn composite(env: &Env, start: f64, dur: f64, layers: &[&VItem]) -> Result<Segment, Error> {
     std::fs::create_dir_all(env.work_dir).map_err(|e| Error::Failed(format!("cannot make {}: {e}", env.work_dir.display())))?;
     let options = GenerationOptions::default();
@@ -311,14 +312,30 @@ fn composite(env: &Env, start: f64, dur: f64, layers: &[&VItem]) -> Result<Segme
 }
 
 /// One ffmpeg call: trim each layer to the span, scale the ones above the
-/// bottom to half the width, and overlay them at the bottom right.
+/// bottom to half the width, and overlay them at the bottom right. Every
+/// layer's sound is kept and mixed together.
 fn overlay_layers(env: &Env, files: &[PathBuf], offsets: &[f64], length: f64, out: &Path) -> Result<(), Error> {
     let n = files.len();
     let cut = |k: usize| format!("trim=start={:.4}:end={:.4}", offsets[k], offsets[k] + length);
-    let mut graph: Vec<String> = vec![
-        format!("[0:v]{},setpts=PTS-STARTPTS[b0]", cut(0)),
-        format!("[0:a]atrim=start={:.4}:end={:.4},asetpts=PTS-STARTPTS[aout]", offsets[0], offsets[0] + length),
-    ];
+    let sound = |k: usize| format!("[{k}:a]atrim=start={:.4}:end={:.4},asetpts=PTS-STARTPTS", offsets[k], offsets[k] + length);
+    let mut graph: Vec<String> = vec![format!("[0:v]{},setpts=PTS-STARTPTS[b0]", cut(0))];
+    if n == 1 {
+        // Nothing above the bottom layer: its sound goes through untouched.
+        graph.push(format!("{}[aout]", sound(0)));
+    } else {
+        // The bottom layer keeps its full level; every upper layer is added on
+        // top of it. `normalize=0` (and `dropout_transition=0`) means silence
+        // in one layer never turns the others down, and a layer that ends early
+        // does not pump the mix. The limiter only catches the sum peaking over
+        // full scale; `level=false` keeps it from lifting quiet material.
+        for k in 0..n {
+            graph.push(format!("{}[a{k}]", sound(k)));
+        }
+        let inputs: String = (0..n).map(|k| format!("[a{k}]")).collect();
+        graph.push(format!(
+            "{inputs}amix=inputs={n}:duration=longest:dropout_transition=0:normalize=0,alimiter=limit=0.95:level=false[aout]"
+        ));
+    }
     for k in 1..n {
         // Every layer is the renderer's own frame, so iw/2 is half the picture.
         graph.push(format!("[{k}:v]{},setpts=PTS-STARTPTS,scale=w=trunc(iw/2/2)*2:h=-2[t{k}]", cut(k)));

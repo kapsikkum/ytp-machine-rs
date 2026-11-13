@@ -242,6 +242,24 @@ fn pixel(f: &[u8], x: usize, y: usize) -> (u8, u8, u8) {
     (f[i], f[i + 1], f[i + 2])
 }
 
+/// ffmpeg's volumedetect over a file's first audio stream: `(mean, peak)` in dB.
+/// Digital silence comes back as `-inf`, which parses to `f64::NEG_INFINITY`.
+fn volume(path: &Path) -> (f64, f64) {
+    let out = Command::new(ffmpeg())
+        .args(["-v", "info", "-nostdin", "-i"])
+        .arg(path)
+        .args(["-map", "0:a:0", "-af", "volumedetect", "-f", "null", "-"])
+        .output()
+        .unwrap();
+    let text = String::from_utf8_lossy(&out.stderr);
+    let db = |key: &str| -> f64 {
+        let line = text.lines().find(|l| l.contains(key)).unwrap_or_else(|| panic!("no {key} in:\n{text}"));
+        let v = line.split(key).nth(1).unwrap().split_whitespace().next().unwrap();
+        v.parse().unwrap_or(f64::NEG_INFINITY)
+    };
+    (db("mean_volume:"), db("max_volume:"))
+}
+
 #[test]
 fn clips_on_different_video_tracks_are_composited_picture_in_picture() {
     let Some(w) = World::new() else { return };
@@ -287,6 +305,74 @@ fn clips_on_different_video_tracks_are_composited_picture_in_picture() {
     let pr = w.probe(&pv);
     assert!((pr.duration - 1.0).abs() < 0.25, "preview is {} s", pr.duration);
     assert!(pr.has_video);
+}
+
+/// A one-second project: a bottom video layer, plus one upper layer per volume.
+fn pip_project(w: &World, bottom_volume: f64, tops: &[f64]) -> Project {
+    let mut p = Project::new("pip-sound");
+    let mut under = video_track(&[("downloads/green.mp4", 0.0, 1.0, 0.0, 1.0)], w);
+    under.volume = bottom_volume;
+    under.clips[0].id = "under".into();
+    p.tracks.push(under);
+    // The tops are different sources with different tones, so their sound adds
+    // up in power rather than cancelling.
+    let files = ["downloads/red.mp4", "downloads/native.mp4"];
+    for (k, volume) in tops.iter().enumerate() {
+        let mut over = video_track(&[(files[k], 0.0, 1.0, 0.0, 1.0)], w);
+        over.id = format!("v{k}");
+        over.name = format!("Over {k}");
+        over.volume = *volume;
+        over.clips[0].id = format!("over{k}");
+        p.tracks.push(over);
+    }
+    p.validate().unwrap();
+    p
+}
+
+#[test]
+fn the_upper_layer_of_a_composite_is_mixed_into_the_sound() {
+    let Some(w) = World::new() else { return };
+    let corpus = w.dir.path().join("corpus").join("downloads");
+    make_colour(&corpus, "green.mp4", "lime");
+    make_colour(&corpus, "red.mp4", "red");
+
+    // A silent bottom layer: anything heard has to come from the layer above.
+    let quiet = w.dir.path().join("pip-silent.mp4");
+    full(&w, &pip_project(&w, 0.0, &[]), &quiet);
+    let loud = w.dir.path().join("pip-silent-top.mp4");
+    full(&w, &pip_project(&w, 0.0, &[1.0]), &loud);
+    // Two layers above the bottom, to show there is no two-track limit.
+    let two_tops = w.dir.path().join("pip-two-tops.mp4");
+    full(&w, &pip_project(&w, 0.0, &[1.0, 1.0]), &two_tops);
+
+    // The bottom layer alone, and the same bottom with a silent layer above it.
+    let plain = w.dir.path().join("pip-bottom-alone.mp4");
+    full(&w, &pip_project(&w, 1.0, &[]), &plain);
+    let silent_top = w.dir.path().join("pip-bottom-silent-top.mp4");
+    full(&w, &pip_project(&w, 1.0, &[0.0]), &silent_top);
+
+    let (quiet_mean, quiet_peak) = volume(&quiet);
+    let (loud_mean, loud_peak) = volume(&loud);
+    let (tops_mean, _) = volume(&two_tops);
+    let (plain_mean, plain_peak) = volume(&plain);
+    let (muted_mean, _) = volume(&silent_top);
+    eprintln!(
+        "bottom only (silent) {quiet_mean:.1}/{quiet_peak:.1} dB; with the top layer {loud_mean:.1}/{loud_peak:.1} dB; \
+         with two top layers {tops_mean:.1} dB; bottom alone {plain_mean:.1}/{plain_peak:.1} dB; \
+         with a silent top {muted_mean:.1} dB"
+    );
+
+    // The top layer was not silent after all: the mix carries its sound.
+    assert!(loud_mean > quiet_mean + 20.0, "the top layer's sound is missing: {quiet_mean:.1} -> {loud_mean:.1} dB");
+    assert!(loud_peak > quiet_peak + 20.0, "the top layer adds no peak: {quiet_peak:.1} -> {loud_peak:.1} dB");
+    // A second layer above the bottom adds its own sound as well.
+    assert!(tops_mean > loud_mean + 1.0, "a second upper layer is not mixed in: {loud_mean:.1} -> {tops_mean:.1} dB");
+    // A silent upper layer does not turn the bottom layer down (no amix
+    // normalisation over the padding).
+    assert!(
+        (muted_mean - plain_mean).abs() < 1.0,
+        "a silent upper layer turns the bottom down: {plain_mean:.1} -> {muted_mean:.1} dB"
+    );
 }
 
 #[test]
