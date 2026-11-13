@@ -7,7 +7,7 @@ use std::process::Command;
 use std::sync::Arc;
 use std::time::Duration;
 
-use ytp_core::{Clip, ClipSource, Effect, Place, Project, SynthNote, Track, TrackKind};
+use ytp_core::{Caption, Clip, ClipSource, Effect, Place, Project, SynthNote, Track, TrackKind};
 use ytp_media::{FfmpegRenderer, RenderJob, Renderer};
 use ytp_render::{render_full, render_preview, Env, FullOptions, ProxyCache};
 use ytp_splice::{project_from_plan, segment_of_clip, AudioCache, GenerationOptions, Locator, NoAudio, PlanInfo, Segment};
@@ -338,6 +338,34 @@ fn assert_green(f: &[u8], x: usize, y: usize, what: &str) {
     assert!(g > 150 && r < 100 && b < 100, "{what} is {r},{g},{b}, not the bottom layer");
 }
 
+/// Pixels that are white in every channel (the caption's fill) inside
+/// `x0..x1, y0..y1`. Solid `lime`/`red` pictures and their edges are far from
+/// white, so this counts caption glyphs and nothing else.
+fn white(f: &[u8], x0: usize, y0: usize, x1: usize, y1: usize) -> usize {
+    let mut n = 0;
+    for y in y0..y1 {
+        for x in x0..x1 {
+            let (r, g, b) = pixel(f, x, y);
+            if r > 180 && g > 180 && b > 180 {
+                n += 1;
+            }
+        }
+    }
+    n
+}
+
+/// The whole caption band of a 480x270 frame (text sits at `y = h - th - 12`).
+const BAND: (usize, usize) = (215, 268);
+
+/// Give the track's only clip a caption; word times are source seconds.
+fn captioned(mut t: Track, text: &str, words: &[(&str, f64, f64)]) -> Track {
+    t.clips[0].caption = Some(Caption {
+        text: text.into(),
+        words: words.iter().map(|(w, a, b)| ((*w).to_string(), *a, *b)).collect(),
+    });
+    t
+}
+
 #[test]
 fn a_place_puts_the_upper_layer_in_its_own_corner() {
     let Some(w) = World::new() else { return };
@@ -381,6 +409,121 @@ fn a_layer_without_a_place_keeps_the_default_box() {
     let f = frame(&out, 1.0);
     assert_red(&f, 400, 200, "the default box at the bottom right");
     assert_green(&f, 60, 60, "the bottom layer seen around the default box");
+}
+
+#[test]
+fn a_caption_inside_an_overlap_is_drawn_on_its_own_layer() {
+    let Some(w) = World::new() else { return };
+    let corpus = w.dir.path().join("corpus").join("downloads");
+    make_colour(&corpus, "green.mp4", "lime");
+    make_colour(&corpus, "red.mp4", "red");
+
+    let mut p = Project::new("pip-caption");
+    p.captions = true;
+    // The bottom clip is captioned; the upper one is not, so any text seen
+    // during the overlap can only be the bottom layer's.
+    let mut under = captioned(video_track(&[("downloads/green.mp4", 0.0, 2.0, 0.0, 2.0)], &w), "hello", &[("hel", 0.4, 0.8), ("lo", 0.9, 1.6)]);
+    under.clips[0].id = "under".into();
+    let mut over = video_track(&[("downloads/red.mp4", 0.5, 1.0, 0.0, 1.0)], &w);
+    over.id = "v2".into();
+    over.name = "Over".into();
+    over.clips[0].id = "over".into();
+    // Top left, so the bottom layer's caption band stays uncovered.
+    over.clips[0].place = Some(Place { x: 0.0, y: 0.0, w: 0.5, h: 0.5 });
+    p.tracks.push(under);
+    p.tracks.push(over);
+    p.validate().unwrap();
+
+    let out = w.dir.path().join("pip-caption.mp4");
+    full(&w, &p, &out);
+
+    // Before the overlap the ordinary path draws the caption.
+    let f = frame(&out, 0.2);
+    let before = white(&f, 40, BAND.0, 440, BAND.1);
+    // 1.0 s is inside the overlap (0.5..1.5) and inside the second word.
+    let f = frame(&out, 1.0);
+    assert_red(&f, 60, 60, "the placed upper layer");
+    assert_green(&f, 400, 200, "the bottom layer beside it");
+    let inside = white(&f, 40, BAND.0, 440, BAND.1);
+    eprintln!("caption band white pixels: before the overlap {before}, inside the composite {inside}");
+    assert!(before > 40, "the ordinary path lost the caption: {before} white pixels before the overlap");
+    assert!(inside > 40, "the caption vanished inside the composite: {inside} white pixels during the overlap");
+}
+
+#[test]
+fn an_upper_layers_caption_is_drawn_inside_its_place_box() {
+    let Some(w) = World::new() else { return };
+    let corpus = w.dir.path().join("corpus").join("downloads");
+    make_colour(&corpus, "green.mp4", "lime");
+    make_colour(&corpus, "red.mp4", "red");
+
+    let mut p = Project::new("pip-caption-place");
+    p.captions = true;
+    let mut under = video_track(&[("downloads/green.mp4", 0.0, 2.0, 0.0, 2.0)], &w);
+    under.clips[0].id = "under".into();
+    let mut over = captioned(video_track(&[("downloads/red.mp4", 0.5, 1.0, 0.0, 1.0)], &w), "hello", &[("hel", 0.4, 1.0)]);
+    over.id = "v2".into();
+    over.name = "Over".into();
+    over.clips[0].id = "over".into();
+    over.clips[0].place = Some(Place { x: 0.0, y: 0.0, w: 0.5, h: 0.5 });
+    p.tracks.push(under);
+    p.tracks.push(over);
+    p.validate().unwrap();
+
+    let out = w.dir.path().join("pip-caption-place.mp4");
+    full(&w, &p, &out);
+    let f = frame(&out, 1.0);
+    assert_red(&f, 60, 60, "the placed upper layer");
+
+    // 480x270 -> 240x135: the upper layer's text is near the bottom of its
+    // box, centred on it, at half the ordinary size.
+    let in_box = white(&f, 60, 100, 200, 135);
+    // Nothing of that text is left on the frame's own caption band, and none
+    // shows at the same height on the other side of the frame.
+    let frame_band = white(&f, 0, BAND.0, 480, BAND.1);
+    let elsewhere = white(&f, 280, 100, 420, 135);
+    eprintln!("upper layer caption: in its box {in_box}, frame caption band {frame_band}, mirrored region {elsewhere}");
+    assert!(in_box > 30, "the upper layer's caption is not in its box: {in_box} white pixels");
+    assert_eq!(frame_band, 0, "the upper layer's caption was left at the frame's bottom: {frame_band} white pixels");
+    assert_eq!(elsewhere, 0, "the upper layer's caption is not centred on its box: {elsewhere} white pixels");
+}
+
+#[test]
+fn a_captioned_render_without_overlaps_is_unchanged() {
+    let Some(w) = World::new() else { return };
+    let corpus = w.dir.path().join("corpus").join("downloads");
+    make_colour(&corpus, "green.mp4", "lime");
+    make_colour(&corpus, "red.mp4", "red");
+
+    let mut p = Project::new("plain-captions");
+    p.captions = true;
+    let mut t = Track::new("v", TrackKind::Video, "Video");
+    let mut a = captioned(video_track(&[("downloads/green.mp4", 0.0, 1.0, 0.0, 1.0)], &w), "hel", &[("hel", 0.3, 0.9)]);
+    a.clips[0].id = "a".into();
+    let mut b = captioned(video_track(&[("downloads/red.mp4", 0.0, 1.0, 0.0, 1.0)], &w), "lo", &[("lo", 0.3, 0.9)]);
+    b.clips[0].id = "b".into();
+    b.clips[0].start = 1.0;
+    t.clips.push(a.clips.remove(0));
+    t.clips.push(b.clips.remove(0));
+    p.tracks.push(t);
+    p.validate().unwrap();
+
+    let out = w.dir.path().join("plain-captions.mp4");
+    let len = full(&w, &p, &out);
+    assert!((len - 2.0).abs() < 1e-9);
+
+    // Both clips show their word in the band, none of it above the band.
+    let f = frame(&out, 0.5);
+    assert_green(&f, 240, 60, "the first clip");
+    let first = white(&f, 40, BAND.0, 440, BAND.1);
+    let above = white(&f, 0, 40, 480, 180);
+    let f = frame(&out, 1.5);
+    assert_red(&f, 240, 60, "the second clip");
+    let second = white(&f, 40, BAND.0, 440, BAND.1);
+    eprintln!("ordinary captions: first clip {first}, second clip {second}, above the band {above}");
+    assert!(first > 40, "the first clip's caption is missing: {first} white pixels");
+    assert!(second > 40, "the second clip's caption is missing: {second} white pixels");
+    assert_eq!(above, 0, "caption text leaked out of the band: {above} white pixels");
 }
 
 /// A one-second project: a bottom video layer, plus one upper layer per volume.

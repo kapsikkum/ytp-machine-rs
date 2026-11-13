@@ -5,6 +5,14 @@
 //! Clips of *different* video tracks may run at the same time: the later track
 //! is composited over the earlier one as a picture-in-picture. Clips of one
 //! track still have to follow each other (see [`spans_of`] and [`composite`]).
+//!
+//! Captions are burned into each layer's own intermediate file *before* the
+//! layers are composited, with the same renderer and the same graph the
+//! ordinary path uses. Scaling or placing a layer therefore carries its text
+//! along, and every layer that has a caption visible at that moment shows it.
+//! Where two layers' captions are on screen at once they simply overlap: the
+//! upper layer's text is drawn over the lower one's, nothing is merged or
+//! suppressed.
 
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -202,11 +210,17 @@ fn spans_of(items: &[VItem]) -> Vec<((f64, f64), Vec<usize>)> {
 
 /// The run with each overlapping stretch replaced by a composite and every
 /// clip cut around the stretches that cover it.
-fn layered<'a>(env: &Env, items: &[VItem<'a>], spans: &[((f64, f64), Vec<usize>)], frame: (u32, u32)) -> Result<Vec<Piece<'a>>, Error> {
+fn layered<'a>(
+    env: &Env,
+    items: &[VItem<'a>],
+    spans: &[((f64, f64), Vec<usize>)],
+    frame: (u32, u32),
+    captions: bool,
+) -> Result<Vec<Piece<'a>>, Error> {
     let mut pieces: Vec<Piece<'a>> = Vec::new();
     for ((a, b), set) in spans {
         let layers: Vec<&VItem> = set.iter().map(|&k| &items[k]).collect();
-        let seg = composite(env, *a, b - a, &layers, frame)?;
+        let seg = composite(env, *a, b - a, &layers, frame, captions)?;
         pieces.push(Piece { start: *a, dur: b - a, seg, clip: None, own: true });
     }
     for (k, it) in items.iter().enumerate() {
@@ -228,14 +242,14 @@ fn layered<'a>(env: &Env, items: &[VItem<'a>], spans: &[((f64, f64), Vec<usize>)
             if spans.iter().any(|((x, y), set)| set.contains(&k) && a >= *x - 1e-9 && b <= *y + 1e-9) {
                 continue;
             }
-            pieces.push(piece_of(env, it, a, b, frame)?);
+            pieces.push(piece_of(env, it, a, b, frame, captions)?);
         }
     }
     Ok(pieces)
 }
 
 /// `[start, end)` of clip `it` as a piece of the run.
-fn piece_of<'a>(env: &Env, it: &VItem<'a>, a: f64, b: f64, frame: (u32, u32)) -> Result<Piece<'a>, Error> {
+fn piece_of<'a>(env: &Env, it: &VItem<'a>, a: f64, b: f64, frame: (u32, u32), captions: bool) -> Result<Piece<'a>, Error> {
     if a <= it.start + 1e-9 && b >= it.start + it.dur - 1e-9 {
         return Ok(Piece { start: it.start, dur: it.dur, seg: it.seg.clone(), clip: Some(it.clip), own: false });
     }
@@ -248,7 +262,7 @@ fn piece_of<'a>(env: &Env, it: &VItem<'a>, a: f64, b: f64, frame: (u32, u32)) ->
         seg.length = Some(b - a);
         return Ok(Piece { start: a, dur: b - a, seg, clip: None, own: false });
     }
-    let seg = composite(env, a, b - a, &[it], frame)?;
+    let seg = composite(env, a, b - a, &[it], frame, captions)?;
     Ok(Piece { start: a, dur: b - a, seg, clip: None, own: true })
 }
 
@@ -256,7 +270,10 @@ fn piece_of<'a>(env: &Env, it: &VItem<'a>, a: f64, b: f64, frame: (u32, u32)) ->
 /// picture, each later track is laid over it, scaled to half the width and put
 /// at the bottom right, unless it has a [`Place`] of its own. Every layer's
 /// sound is mixed, so the ones above are heard too.
-fn composite(env: &Env, start: f64, dur: f64, layers: &[&VItem], frame: (u32, u32)) -> Result<Segment, Error> {
+///
+/// `captions` burns each layer's own caption into that layer's file before it
+/// is scaled and overlaid, so the text travels with its picture.
+fn composite(env: &Env, start: f64, dur: f64, layers: &[&VItem], frame: (u32, u32), captions: bool) -> Result<Segment, Error> {
     std::fs::create_dir_all(env.work_dir).map_err(|e| Error::Failed(format!("cannot make {}: {e}", env.work_dir.display())))?;
     let options = GenerationOptions::default();
     let audio = AudioCache::new(&NoAudio);
@@ -280,7 +297,7 @@ fn composite(env: &Env, start: f64, dur: f64, layers: &[&VItem], frame: (u32, u3
         let job = RenderJob {
             segments: std::slice::from_ref(&seg),
             options: &options,
-            captions: false,
+            captions,
             out: &path,
             audio: &audio,
             max_height: 0,
@@ -481,7 +498,7 @@ pub fn plan(env: &Env, project: &Project, window: Option<(f64, f64)>) -> Result<
     let mut pieces: Vec<Piece> = if spans.is_empty() {
         items.into_iter().map(|it| Piece { start: it.start, dur: it.dur, seg: it.seg, clip: Some(it.clip), own: false }).collect()
     } else {
-        layered(env, &items, &spans, frame)?
+        layered(env, &items, &spans, frame, project.captions)?
     };
     pieces.sort_by(|a, b| a.start.total_cmp(&b.start));
 
