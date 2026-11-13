@@ -7,6 +7,7 @@ use std::process::Command;
 use std::sync::Arc;
 use std::time::Duration;
 
+use ytp_core::timeline::Place;
 use ytp_core::{Clip, ClipSource, Effect, Project, SynthNote, Track, TrackKind};
 use ytp_media::{FfmpegRenderer, RenderJob, Renderer};
 use ytp_render::{render_full, render_preview, Env, FullOptions, ProxyCache};
@@ -306,6 +307,81 @@ fn clips_on_different_video_tracks_are_composited_picture_in_picture() {
     let pr = w.probe(&pv);
     assert!((pr.duration - 1.0).abs() < 0.25, "preview is {} s", pr.duration);
     assert!(pr.has_video);
+}
+
+/// A 480x270 project: a green bottom layer for two seconds and a red layer of
+/// one second from 0.5 s over it, at `place` (or the default box with `None`).
+fn placed_project(w: &World, place: Option<Place>) -> Project {
+    let corpus = w.dir.path().join("corpus").join("downloads");
+    make_colour(&corpus, "green.mp4", "lime");
+    make_colour(&corpus, "red.mp4", "red");
+    let mut p = Project::new("placed");
+    let mut under = video_track(&[("downloads/green.mp4", 0.0, 2.0, 0.0, 2.0)], w);
+    under.clips[0].id = "under".into();
+    let mut over = video_track(&[("downloads/red.mp4", 0.5, 1.0, 0.0, 1.0)], w);
+    over.id = "v2".into();
+    over.name = "Over".into();
+    over.clips[0].id = "over".into();
+    over.clips[0].place = place;
+    p.tracks.push(under);
+    p.tracks.push(over);
+    p.validate().unwrap();
+    p
+}
+
+fn assert_red(f: &[u8], x: usize, y: usize, what: &str) {
+    let (r, g, b) = pixel(f, x, y);
+    assert!(r > 150 && g < 100 && b < 100, "{what} is {r},{g},{b}, not the upper layer");
+}
+
+fn assert_green(f: &[u8], x: usize, y: usize, what: &str) {
+    let (r, g, b) = pixel(f, x, y);
+    assert!(g > 150 && r < 100 && b < 100, "{what} is {r},{g},{b}, not the bottom layer");
+}
+
+#[test]
+fn a_place_puts_the_upper_layer_in_its_own_corner() {
+    let Some(w) = World::new() else { return };
+    let p = placed_project(&w, Some(Place { x: 0.0, y: 0.0, w: 0.5, h: 0.5 }));
+    let out = w.dir.path().join("placed-top-left.mp4");
+    let len = full(&w, &p, &out);
+    assert!((len - 2.0).abs() < 1e-9);
+
+    let f = frame(&out, 1.0);
+    // The opposite of the default box: the upper layer is the top left
+    // quadrant, the bottom layer still shows in the bottom right.
+    assert_red(&f, 60, 60, "the top left of a top-left place");
+    assert_red(&f, 200, 120, "just inside the far edge of a top-left place");
+    assert_green(&f, 400, 200, "the bottom right, outside a top-left place");
+}
+
+#[test]
+fn a_centred_place_lands_in_the_middle() {
+    let Some(w) = World::new() else { return };
+    let p = placed_project(&w, Some(Place { x: 0.25, y: 0.25, w: 0.5, h: 0.5 }));
+    let out = w.dir.path().join("placed-centred.mp4");
+    full(&w, &p, &out);
+
+    let f = frame(&out, 1.0);
+    // 480x270: the box is x 120..360, y 67..202.
+    assert_red(&f, 240, 140, "the middle of a centred place");
+    assert_red(&f, 150, 90, "just inside the top left of a centred place");
+    assert_green(&f, 60, 60, "above and left of a centred place");
+    assert_green(&f, 430, 240, "below and right of a centred place");
+}
+
+#[test]
+fn a_layer_without_a_place_keeps_the_default_box() {
+    let Some(w) = World::new() else { return };
+    let p = placed_project(&w, None);
+    let out = w.dir.path().join("placed-default.mp4");
+    full(&w, &p, &out);
+
+    // The same corners the pixel-in-picture test pins down: half width at the
+    // bottom right, the bottom layer around it.
+    let f = frame(&out, 1.0);
+    assert_red(&f, 400, 200, "the default box at the bottom right");
+    assert_green(&f, 60, 60, "the bottom layer seen around the default box");
 }
 
 /// A one-second project: a bottom video layer, plus one upper layer per volume.

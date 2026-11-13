@@ -10,6 +10,7 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 
+use ytp_core::timeline::Place;
 use ytp_core::{Clip, ClipSource, Effect, Project, Track, TrackKind};
 use ytp_media::{RenderJob, Renderer};
 use ytp_splice::{segment_of_clip, AudioCache, GenerationOptions, Locator, NoAudio, Segment};
@@ -202,11 +203,11 @@ fn spans_of(items: &[VItem]) -> Vec<((f64, f64), Vec<usize>)> {
 
 /// The run with each overlapping stretch replaced by a composite and every
 /// clip cut around the stretches that cover it.
-fn layered<'a>(env: &Env, items: &[VItem<'a>], spans: &[((f64, f64), Vec<usize>)]) -> Result<Vec<Piece<'a>>, Error> {
+fn layered<'a>(env: &Env, items: &[VItem<'a>], spans: &[((f64, f64), Vec<usize>)], frame: (u32, u32)) -> Result<Vec<Piece<'a>>, Error> {
     let mut pieces: Vec<Piece<'a>> = Vec::new();
     for ((a, b), set) in spans {
         let layers: Vec<&VItem> = set.iter().map(|&k| &items[k]).collect();
-        let seg = composite(env, *a, b - a, &layers)?;
+        let seg = composite(env, *a, b - a, &layers, frame)?;
         pieces.push(Piece { start: *a, dur: b - a, seg, clip: None, own: true });
     }
     for (k, it) in items.iter().enumerate() {
@@ -228,14 +229,14 @@ fn layered<'a>(env: &Env, items: &[VItem<'a>], spans: &[((f64, f64), Vec<usize>)
             if spans.iter().any(|((x, y), set)| set.contains(&k) && a >= *x - 1e-9 && b <= *y + 1e-9) {
                 continue;
             }
-            pieces.push(piece_of(env, it, a, b)?);
+            pieces.push(piece_of(env, it, a, b, frame)?);
         }
     }
     Ok(pieces)
 }
 
 /// `[start, end)` of clip `it` as a piece of the run.
-fn piece_of<'a>(env: &Env, it: &VItem<'a>, a: f64, b: f64) -> Result<Piece<'a>, Error> {
+fn piece_of<'a>(env: &Env, it: &VItem<'a>, a: f64, b: f64, frame: (u32, u32)) -> Result<Piece<'a>, Error> {
     if a <= it.start + 1e-9 && b >= it.start + it.dur - 1e-9 {
         return Ok(Piece { start: it.start, dur: it.dur, seg: it.seg.clone(), clip: Some(it.clip), own: false });
     }
@@ -248,15 +249,15 @@ fn piece_of<'a>(env: &Env, it: &VItem<'a>, a: f64, b: f64) -> Result<Piece<'a>, 
         seg.length = Some(b - a);
         return Ok(Piece { start: a, dur: b - a, seg, clip: None, own: false });
     }
-    let seg = composite(env, a, b - a, &[it])?;
+    let seg = composite(env, a, b - a, &[it], frame)?;
     Ok(Piece { start: a, dur: b - a, seg, clip: None, own: true })
 }
 
 /// Play `start..start + dur` of every layer as one file: the first layer is the
 /// picture, each later track is laid over it, scaled to half the width and put
-/// at the bottom right. Every layer's sound is mixed, so the ones above are
-/// heard too.
-fn composite(env: &Env, start: f64, dur: f64, layers: &[&VItem]) -> Result<Segment, Error> {
+/// at the bottom right, unless it has a [`Place`] of its own. Every layer's
+/// sound is mixed, so the ones above are heard too.
+fn composite(env: &Env, start: f64, dur: f64, layers: &[&VItem], frame: (u32, u32)) -> Result<Segment, Error> {
     std::fs::create_dir_all(env.work_dir).map_err(|e| Error::Failed(format!("cannot make {}: {e}", env.work_dir.display())))?;
     let options = GenerationOptions::default();
     let audio = AudioCache::new(&NoAudio);
@@ -293,7 +294,8 @@ fn composite(env: &Env, start: f64, dur: f64, layers: &[&VItem]) -> Result<Segme
         offsets.push(offset);
     }
     let path = scratch(env, "pip");
-    let done = overlay_layers(env, &files, &offsets, dur, &path);
+    let places: Vec<Option<Place>> = layers.iter().map(|it| it.clip.place.clone()).collect();
+    let done = overlay_layers(env, &files, &offsets, &places, dur, frame, &path);
     for f in &files {
         let _ = std::fs::remove_file(f);
     }
@@ -311,10 +313,20 @@ fn composite(env: &Env, start: f64, dur: f64, layers: &[&VItem]) -> Result<Segme
     })
 }
 
-/// One ffmpeg call: trim each layer to the span, scale the ones above the
-/// bottom to half the width, and overlay them at the bottom right. Every
-/// layer's sound is kept and mixed together.
-fn overlay_layers(env: &Env, files: &[PathBuf], offsets: &[f64], length: f64, out: &Path) -> Result<(), Error> {
+/// One ffmpeg call: trim each layer to the span and overlay the ones above the
+/// bottom over what is under them. A layer with a [`Place`] is scaled to that
+/// fraction of the frame and put at its corner; one without keeps the default
+/// box at the bottom right, half the width. Every layer's sound is kept and
+/// mixed together.
+fn overlay_layers(
+    env: &Env,
+    files: &[PathBuf],
+    offsets: &[f64],
+    places: &[Option<Place>],
+    length: f64,
+    frame: (u32, u32),
+    out: &Path,
+) -> Result<(), Error> {
     let n = files.len();
     let cut = |k: usize| format!("trim=start={:.4}:end={:.4}", offsets[k], offsets[k] + length);
     let sound = |k: usize| format!("[{k}:a]atrim=start={:.4}:end={:.4},asetpts=PTS-STARTPTS", offsets[k], offsets[k] + length);
@@ -337,9 +349,31 @@ fn overlay_layers(env: &Env, files: &[PathBuf], offsets: &[f64], length: f64, ou
         ));
     }
     for k in 1..n {
-        // Every layer is the renderer's own frame, so iw/2 is half the picture.
-        graph.push(format!("[{k}:v]{},setpts=PTS-STARTPTS,scale=w=trunc(iw/2/2)*2:h=-2[t{k}]", cut(k)));
-        graph.push(format!("[b{}][t{k}]overlay=x=main_w-overlay_w:y=main_h-overlay_h[b{k}]", k - 1));
+        match places.get(k).and_then(|p| p.as_ref()) {
+            // A placed layer: its own box, in fractions of the frame. The
+            // scale is even (yuv420p needs that) and never zero, so a third of
+            // a frame stays a third and a sliver stays visible.
+            Some(place) => {
+                let (fx, fy) = (frac(place.x), frac(place.y));
+                let (fw, fh) = (frac(place.w), frac(place.h));
+                graph.push(format!(
+                    "[{k}:v]{},setpts=PTS-STARTPTS,scale=w='max(2,trunc(iw*{fw}/2)*2)':h='max(2,trunc(ih*{fh}/2)*2)'[t{k}]",
+                    cut(k)
+                ));
+                graph.push(format!(
+                    "[b{}][t{k}]overlay=x='round({fx}*{})':y='round({fy}*{})'[b{k}]",
+                    k - 1,
+                    frame.0,
+                    frame.1
+                ));
+            }
+            // No place: the default box. Every layer is the renderer's own
+            // frame, so iw/2 is half the picture and main_w is the frame.
+            None => {
+                graph.push(format!("[{k}:v]{},setpts=PTS-STARTPTS,scale=w=trunc(iw/2/2)*2:h=-2[t{k}]", cut(k)));
+                graph.push(format!("[b{}][t{k}]overlay=x=main_w-overlay_w:y=main_h-overlay_h[b{k}]", k - 1));
+            }
+        }
     }
     graph.push(format!("[b{}]format=yuv420p[vout]", n - 1));
 
@@ -379,6 +413,12 @@ fn overlay_layers(env: &Env, files: &[PathBuf], offsets: &[f64], length: f64, ou
 }
 
 static SCRATCH: AtomicU64 = AtomicU64::new(0);
+
+/// A fraction as a filter expression number: enough digits that a third stays a
+/// third to well under a pixel of a 1920-wide frame.
+fn frac(v: f64) -> String {
+    format!("{v:.9}")
+}
 
 /// A fresh scratch name, so two renders of a project do not collide.
 fn scratch(env: &Env, tag: &str) -> PathBuf {
@@ -437,11 +477,12 @@ pub fn plan(env: &Env, project: &Project, window: Option<(f64, f64)>) -> Result<
     items.sort_by(|a, b| a.start.total_cmp(&b.start));
 
     // Overlaps across tracks become composites; clips are cut around them.
+    let frame = (project.width, project.height);
     let spans = spans_of(&items);
     let mut pieces: Vec<Piece> = if spans.is_empty() {
         items.into_iter().map(|it| Piece { start: it.start, dur: it.dur, seg: it.seg, clip: Some(it.clip), own: false }).collect()
     } else {
-        layered(env, &items, &spans)?
+        layered(env, &items, &spans, frame)?
     };
     pieces.sort_by(|a, b| a.start.total_cmp(&b.start));
 
