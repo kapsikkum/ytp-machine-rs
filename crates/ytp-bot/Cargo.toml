@@ -8,7 +8,7 @@ description = "Platform-agnostic chat bot core (commands, permissions, job flow)
 
 [features]
 default = ["matrix", "discord"]
-matrix = ["dep:matrix-sdk", "dep:mime"]
+matrix = ["dep:matrix-sdk", "dep:mime", "dep:reqwest"]
 discord = ["dep:serenity", "dep:poise", "dep:reqwest"]
 
 [dependencies]
@@ -31,7 +31,7 @@ serenity = { version = "0.12", optional = true, default-features = false, featur
     "rustls_backend",
 ] }
 poise = { version = "0.7", optional = true }
-reqwest = { version = "0.12", optional = true, default-features = false, features = ["rustls-tls"] }
+reqwest = { version = "0.12", optional = true, default-features = false, features = ["rustls-tls", "json"] }
 
 [dev-dependencies]
 tempfile = { workspace = true }

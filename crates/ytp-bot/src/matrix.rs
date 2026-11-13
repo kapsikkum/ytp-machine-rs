@@ -40,11 +40,61 @@ const MAX_MIDI_BYTES: usize = 2 << 20;
 const BACKOFF_MAX_SECS: u64 = 60;
 const SYNC_TIMEOUT_SECS: u64 = 30;
 
+/// Target bytes of the target-size presets, in the same decimal megabytes
+/// as `presets.toml`. Kept here so the choice below stays pure and the bot
+/// does not need the encoder just to read a number.
+const MATRIX_TARGET_BYTES: u64 = 50_000_000;
+const DISCORD_50MB_TARGET_BYTES: u64 = 50_000_000;
+const DISCORD_25MB_TARGET_BYTES: u64 = 25_000_000;
+const DISCORD_10MB_TARGET_BYTES: u64 = 10_000_000;
+/// A target must leave this much room under the server's hard cap for
+/// container overhead: `target * 105 / 100 <= limit`.
+const UPLOAD_SAFETY_PERCENT: u64 = 105;
+
+/// What preset the transport asks the encoder for.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum PresetChoice {
+    /// The name of a preset that fits the limit.
+    Preset(&'static str),
+    /// Not even the smallest preset fits; the value is the server's cap.
+    TooSmall { limit: u64 },
+}
+
+/// Does a target of `target` bytes fit under `limit` with the safety margin?
+fn target_fits(target: u64, limit: u64) -> bool {
+    target.saturating_mul(UPLOAD_SAFETY_PERCENT) / 100 <= limit
+}
+
+/// The preset to encode with, given the homeserver's upload cap. `None`
+/// (the cap could not be read) keeps the historical Matrix preset.
+fn pick_upload_preset(limit: Option<u64>) -> PresetChoice {
+    let Some(limit) = limit else {
+        return PresetChoice::Preset("matrix");
+    };
+    // Order matters: "matrix" and "discord-50mb" share a 50 MB target, and
+    // the Matrix name is the right one to keep when it fits.
+    const CANDIDATES: [(&str, u64); 4] = [
+        ("matrix", MATRIX_TARGET_BYTES),
+        ("discord-50mb", DISCORD_50MB_TARGET_BYTES),
+        ("discord-25mb", DISCORD_25MB_TARGET_BYTES),
+        ("discord-10mb", DISCORD_10MB_TARGET_BYTES),
+    ];
+    for (name, target) in CANDIDATES {
+        if target_fits(target, limit) {
+            return PresetChoice::Preset(name);
+        }
+    }
+    PresetChoice::TooSmall { limit }
+}
+
 type AnyError = Box<dyn std::error::Error + Send + Sync>;
 
 /// One Matrix connection. The core talks to the rooms through this.
 pub struct MatrixTransport {
     client: Client,
+    /// The homeserver's upload cap, read once after login. `None` means the
+    /// server did not say, and the historical 50 MB preset is used.
+    upload_limit_bytes: Option<u64>,
 }
 
 impl MatrixTransport {
@@ -63,10 +113,60 @@ fn reply_relation(content: &mut serde_json::Value, reply_to: Option<&str>) {
     }
 }
 
+/// Ask the homeserver for its upload cap, once. Any failure is only a
+/// warning: the bot keeps working with the default preset.
+async fn fetch_upload_limit(client: &Client) -> Option<u64> {
+    match try_fetch_upload_limit(client).await {
+        Ok(limit) => limit,
+        Err(e) => {
+            tracing::warn!(
+                error = %e,
+                "matrix: could not read the homeserver's upload limit; using the default preset"
+            );
+            None
+        }
+    }
+}
+
+async fn try_fetch_upload_limit(client: &Client) -> Result<Option<u64>, AnyError> {
+    let token = client.access_token().ok_or("not logged in")?;
+    let base = client.homeserver();
+    let http = reqwest::Client::new();
+    // The v1 endpoint is current; older homeservers only know the /media/v3
+    // one, so a 404 falls through to it.
+    let mut resp = http
+        .get(base.join("/_matrix/client/v1/media/config")?)
+        .bearer_auth(&token)
+        .send()
+        .await?;
+    if resp.status() == reqwest::StatusCode::NOT_FOUND {
+        resp = http
+            .get(base.join("/_matrix/media/v3/config")?)
+            .bearer_auth(&token)
+            .send()
+            .await?;
+    }
+    let body: serde_json::Value = resp.json().await?;
+    let bytes = body.get("m.upload.size").and_then(serde_json::Value::as_u64);
+    Ok(bytes.filter(|b| *b > 0))
+}
+
 #[async_trait]
 impl ChatTransport for MatrixTransport {
     fn upload_preset(&self) -> String {
-        "matrix".into()
+        match pick_upload_preset(self.upload_limit_bytes) {
+            PresetChoice::Preset(name) => name.to_string(),
+            PresetChoice::TooSmall { limit } => {
+                // `upload_preset` cannot fail, so encode with the smallest
+                // preset and let `send_video` turn a still-too-big file into
+                // a chat-visible error.
+                tracing::error!(
+                    limit,
+                    "matrix: the homeserver's upload limit fits no video preset; the upload will be refused"
+                );
+                "discord-10mb".to_string()
+            }
+        }
     }
 
     async fn send(&self, room: &str, text: &str, reply_to: Option<&str>) -> BotResult<String> {
@@ -160,6 +260,15 @@ impl ChatTransport for MatrixTransport {
             .await
             .map_err(|e| BotError::internal(format!("could not read the video: {e}")))?;
         let size = data.len();
+        if let Some(limit) = self.upload_limit_bytes {
+            if size as u64 > limit {
+                return Err(BotError::user(format!(
+                    "The video is {} bytes, over this homeserver's upload limit of {} bytes. \
+                     Try a shorter video.",
+                    size, limit
+                )));
+            }
+        }
         let mime = file
             .mime
             .parse::<mime::Mime>()
@@ -235,6 +344,7 @@ impl MatrixBot {
 
     async fn listen(&self) -> Result<(), AnyError> {
         let client = self.connect().await?;
+        let upload_limit_bytes = fetch_upload_limit(&client).await;
         let own = client
             .user_id()
             .map(ToOwned::to_owned)
@@ -244,6 +354,7 @@ impl MatrixBot {
             status: self.status.clone(),
             transport: MatrixTransport {
                 client: client.clone(),
+                upload_limit_bytes,
             },
             own,
             prefix: self.settings.prefix.clone(),
@@ -591,4 +702,35 @@ fn chat_event(room: &Room, ev: &OriginalSyncRoomMessageEvent) -> Option<ChatEven
         role_ids: Vec::new(),
         guild: None,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const MB: u64 = 1_000_000;
+
+    fn chosen(limit: Option<u64>) -> Result<&'static str, u64> {
+        match pick_upload_preset(limit) {
+            PresetChoice::Preset(name) => Ok(name),
+            PresetChoice::TooSmall { limit } => Err(limit),
+        }
+    }
+
+    #[test]
+    fn an_unknown_or_roomy_limit_keeps_matrix() {
+        assert_eq!(chosen(None), Ok("matrix"));
+        assert_eq!(chosen(Some(60 * MB)), Ok("matrix"));
+    }
+
+    #[test]
+    fn a_smaller_limit_picks_the_largest_preset_that_fits() {
+        assert_eq!(chosen(Some(40 * MB)), Ok("discord-25mb"));
+        assert_eq!(chosen(Some(12 * MB)), Ok("discord-10mb"));
+    }
+
+    #[test]
+    fn a_limit_below_every_preset_is_reported() {
+        assert_eq!(chosen(Some(5 * MB)), Err(5 * MB));
+    }
 }
