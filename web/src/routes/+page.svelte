@@ -98,7 +98,27 @@
     { id: 'a2', name: 'Music 1', kind: 'audio', sub: 'audio', color: TRACK_COLORS[2], clips: [] }
   ]);
   let counter = 3;
+  // crates/ytp-core/src/timeline.rs: validate() rejects a document with more.
+  const MAX_TRACKS = 256;
+
+  // With a project open the track is a real ProjectTrack (video or audio;
+  // voice/music both map to the project's audio kind), so it can be saved;
+  // without one it is layout only.
   function addTrack(kind: TrackKind) {
+    if (project) {
+      const pk = kind === 'video' ? 'video' : kind === 'voice' || kind === 'audio' ? 'audio' : null;
+      if (!pk || !canWrite || project.tracks.length >= MAX_TRACKS) return;
+      const label = pk === 'video' ? 'Video' : kind === 'voice' ? 'Voice' : 'Music';
+      const n = project.tracks.filter((t) => t.kind === pk).length + 1;
+      const base = pk === 'video' ? 'v' : 'a';
+      let id = `${base}${n}`;
+      for (let i = n + 1; project.tracks.some((t) => t.id === id); i += 1) id = `${base}${i}`;
+      project.tracks.push({ id, kind: pk, name: `${label} ${n}`, mute: false, solo: false, volume: 1, generated: false, clips: [] });
+      selected = id;
+      dirty = true;
+      record();
+      return;
+    }
     counter += 1;
     const label = { video: 'Video', voice: 'Voice', audio: 'Music', midi: 'MIDI', text: 'Text' }[kind];
     const n = localTracks.filter((t) => t.kind === kind).length + 1;
@@ -114,6 +134,7 @@
   const tracks = $derived<Track[]>(project ? toTimelineTracks(project) : localTracks);
   const duration = $derived(project ? Math.max(1, projectDuration(project) + (stored?.kind === 'song' ? 0.8 : 0)) : 30);
   const canWrite = $derived(!!stored && stored.access !== 'read' && $can('project.write'));
+  const tooManyTracks = $derived(!!project && project.tracks.length >= MAX_TRACKS);
 
   // The clip under the timeline selection, or null when none is selected (or
   // the one that was is gone).
@@ -133,6 +154,41 @@
     const clip = track?.clips.find((c) => c.id === clipId);
     if (!clip) return;
     clip.effects = effects;
+    dirty = true;
+    record();
+  }
+
+  // Moving the selected clip to another track of its own kind (video to video,
+  // audio to audio). The clip keeps its time, so it may now overlap a clip on
+  // its new track: that is legal and composites as picture-in-picture. Only the
+  // clip object moves, ids and all, so nothing is clamped or renumbered.
+  function neighborTrack(dir: -1 | 1): { id: string; name: string } | null {
+    const s = selectedClip;
+    if (!project || !s) return null;
+    const at = project.tracks.findIndex((t) => t.id === s.track);
+    if (at < 0) return null;
+    const kind = project.tracks[at].kind;
+    for (let i = at + dir; i >= 0 && i < project.tracks.length; i += dir) {
+      const t = project.tracks[i];
+      if (t.kind === kind) return { id: t.id, name: t.name || t.id };
+    }
+    return null;
+  }
+  const upTrack = $derived.by(() => neighborTrack(-1));
+  const downTrack = $derived.by(() => neighborTrack(1));
+
+  function moveSelectedTo(trackId: string) {
+    const s = selectedClip;
+    if (!project || !s || !canWrite) return;
+    const from = project.tracks.find((t) => t.id === s.track);
+    const to = project.tracks.find((t) => t.id === trackId);
+    if (!from || !to || from.id === to.id || from.kind !== to.kind) return;
+    const i = from.clips.findIndex((c) => c.id === s.clip);
+    if (i < 0) return;
+    const [clip] = from.clips.splice(i, 1);
+    to.clips.push(clip);
+    selectedClip = { track: to.id, clip: clip.id };
+    selected = to.id;
     dirty = true;
     record();
   }
@@ -257,7 +313,12 @@
       if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || t?.isContentEditable) return;
       if (!(e.ctrlKey || e.metaKey)) return;
       const key = e.key.toLowerCase();
-      if (key === 'z' && !e.shiftKey) {
+      if (key === 'arrowup' || key === 'arrowdown') {
+        const to = key === 'arrowup' ? upTrack : downTrack;
+        if (!to) return;
+        e.preventDefault();
+        moveSelectedTo(to.id);
+      } else if (key === 'z' && !e.shiftKey) {
         e.preventDefault();
         undo();
       } else if ((key === 'z' && e.shiftKey) || key === 'y') {
@@ -401,6 +462,13 @@
         </span>
         <span class="grow"></span>
         <button type="button" class="danger" disabled={!selected} onclick={removeSelected}>remove track</button>
+      {:else if canWrite}
+        <span class="add">
+          add track
+          <button type="button" disabled={tooManyTracks} onclick={() => addTrack('video')}>+ video</button>
+          <button type="button" disabled={tooManyTracks} onclick={() => addTrack('voice')}>+ voice</button>
+          <button type="button" disabled={tooManyTracks} onclick={() => addTrack('audio')}>+ music</button>
+        </span>
       {/if}
     </div>
     <Timeline {tracks} {duration} {selected} selectedClip={selectedClip?.clip ?? null} bind:playhead
@@ -412,6 +480,17 @@
   </div>
 
   {#if project && selection}
+    <div class="tl-tools">
+      <span class="section-label">selected clip</span>
+      <span class="add">
+        move to track
+        <button type="button" disabled={!canWrite || !upTrack} title="Move to the track above (Ctrl+↑)"
+                onclick={() => { const t = upTrack; if (t) moveSelectedTo(t.id); }}>↑ {upTrack?.name ?? '—'}</button>
+        <button type="button" disabled={!canWrite || !downTrack} title="Move to the track below (Ctrl+↓)"
+                onclick={() => { const t = downTrack; if (t) moveSelectedTo(t.id); }}>↓ {downTrack?.name ?? '—'}</button>
+      </span>
+      <span class="meta">a clip may overlap one on its new track; that renders as picture-in-picture</span>
+    </div>
     <EffectsPanel clip={selection} editable={canWrite} onchange={setEffects} />
   {:else if project}
     <p class="meta">Select a clip in the timeline to edit its effects.</p>
