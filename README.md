@@ -73,9 +73,11 @@ starts `POST /api/jobs/:id/export` with a preset from `GET /api/encode/presets`;
 is served at `GET /api/jobs/:id/result`. `hq` presets need the `export.hq` permission and
 are greyed out without it. A whole project renders with `POST /api/projects/:id/render`.
 
-Known limits: overlapping video clips on one track are refused, `generated` clip sources
-cannot render yet, song projects are editable at track level only (notes are read-only),
-and preview windows show the track mix rather than every per-clip effect.
+Known limits: video clips that overlap on one track are still refused, clips on different tracks
+render as a picture-in-picture (half size, bottom right, later track on top) whose own sound is
+dropped and where captions are not drawn, `generated` clip sources cannot render yet, song projects
+are editable at track level only (notes are read-only), and preview windows show the track mix
+rather than every per-clip effect.
 
 ## Chat bots
 

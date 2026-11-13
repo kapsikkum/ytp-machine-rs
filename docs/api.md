@@ -261,10 +261,11 @@ volume −80…+40 dB); at most 256 tracks and 50 000 clips; a synth clip lives 
 
 Two kinds of project exist. A **sequence** (a sentence plan, or what the Studio edits) is video
 clips end to end on the video tracks, gaps filled with black and silence, and audio clips laid over
-it; overlapping *video* clips are refused for now. A **song** (`generator.kind = "ytpmv"`, tracks
-with `generated: true`) is a readout of the song renderer: one track per part, one clip per note.
-It is played by running the song renderer again with each track's mute/solo/volume put on its
-part; editing individual notes is not possible yet.
+it; video clips on the same track may not overlap, while clips on different tracks are composited
+picture-in-picture (half width, bottom right, later track on top, without its sound or captions).
+A **song** (`generator.kind = "ytpmv"`, tracks with `generated: true`) is a readout of the song
+renderer: one track per part, one clip per note. It is played by running the song renderer again
+with each track's mute/solo/volume put on its part; editing individual notes is not possible yet.
 
 | Method | Path | Body | Response | Permission |
 |---|---|---|---|---|

@@ -411,7 +411,7 @@ pub fn plan(env: &Env, project: &Project, window: Option<(f64, f64)>) -> Result<
         for w in own.windows(2) {
             if w[1].start < w[0].start + w[0].dur - FRAME / 2.0 {
                 return Err(Error::Invalid(format!(
-                    "video clips {} and {} overlap; layering video is not supported yet",
+                    "video clips {} and {} overlap on the same video track; put one of them on another track to layer them",
                     w[0].clip.id, w[1].clip.id
                 )));
             }
