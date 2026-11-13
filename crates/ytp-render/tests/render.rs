@@ -171,6 +171,7 @@ fn video_track(segments_at: &[(&str, f64, f64, f64, f64)], w: &World) -> Track {
             effects: vec![],
             label: None,
             caption: None,
+            place: None,
         });
     }
     let _ = w;
@@ -432,6 +433,7 @@ fn audio_clips_are_mixed_in_full_and_in_preview() {
         effects: vec![Effect::Volume { db: -3.0 }],
         label: None,
         caption: None,
+        place: None,
     });
     p.tracks.push(a);
     p.validate().unwrap();
@@ -500,6 +502,7 @@ fn segments_of_a_project_keep_the_clips_own_length() {
         effects: vec![Effect::Stretch { factor: 3.0 }, Effect::Pause { seconds: 0.1 }],
         label: None,
         caption: None,
+        place: None,
     });
     p.tracks.push(t);
     let s = segment_of_clip(&p, &p.tracks[0].clips[0], "f.mp4", 1.0, 1.3, 0.0);

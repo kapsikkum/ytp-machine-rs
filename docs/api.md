@@ -245,7 +245,8 @@ Track { id, kind: "video"|"audio", name, mute, solo, volume /* 0..4, linear */,
         clips: Clip[] }
 Clip  { id, start, duration,                      // duration is authoritative on the timeline
         source: ClipSource, effects: Effect[], label?: string,
-        caption?: { text, words: [text, start, end][] } }   // word times in *source* seconds
+        caption?: { text, words: [text, start, end][] },   // word times in *source* seconds
+        place?: { x, y, w, h } }                   // frame fractions (0..1): box corner and size; only when composited over another clip; absent = the renderer's default box
 ClipSource =
   { type: "corpus_clip", corpus, clip_id?, file?, word?, take?, in, out }  // file is relative to the corpus
 | { type: "media", asset, in, out }                                         // an uploaded asset id

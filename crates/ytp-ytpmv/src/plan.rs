@@ -98,6 +98,7 @@ pub fn plan_project(prep: &Prepared, name: &str, request: serde_json::Value) -> 
                 effects,
                 label: None,
                 caption: None,
+                place: None,
             });
         }
         project.tracks.push(track);

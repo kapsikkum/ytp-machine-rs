@@ -266,6 +266,7 @@ mod tests {
                 effects: vec![],
                 label: None,
                 caption: None,
+                place: None,
             });
             p.tracks.push(t);
         }

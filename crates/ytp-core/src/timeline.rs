@@ -120,6 +120,22 @@ pub struct Clip {
     pub label: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub caption: Option<Caption>,
+    /// Where its picture sits when the clip is composited over a clip of
+    /// another track: `x`/`y` is the top-left corner and `w`/`h` the size, all
+    /// fractions of the frame. It does nothing to a clip that is not
+    /// composited over another one; `None` is the renderer's default box.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub place: Option<Place>,
+}
+
+/// A rectangle in the frame, as fractions (0..=1) of its width and height:
+/// the top-left corner `(x, y)` and the size `(w, h)`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Place {
+    pub x: f64,
+    pub y: f64,
+    pub w: f64,
+    pub h: f64,
 }
 
 /// Words shown over the picture. `words` are `(text, start, end)` in *source*
@@ -354,6 +370,29 @@ impl ClipSource {
     }
 }
 
+impl Place {
+    fn check(&self) -> Result<(), String> {
+        let unit = |what: &str, v: f64| {
+            if v.is_finite() && (0.0..=1.0).contains(&v) {
+                Ok(())
+            } else {
+                Err(format!("place {what} must be between 0 and 1"))
+            }
+        };
+        unit("x", self.x)?;
+        unit("y", self.y)?;
+        unit("w", self.w)?;
+        unit("h", self.h)?;
+        if self.w <= 0.0 || self.h <= 0.0 {
+            return Err("place w and h must be more than 0".into());
+        }
+        if self.x + self.w > 1.0 + 1e-9 || self.y + self.h > 1.0 + 1e-9 {
+            return Err("place x + w and y + h must be at most 1 (the box fits inside the frame)".into());
+        }
+        Ok(())
+    }
+}
+
 impl Clip {
     pub fn end(&self) -> f64 {
         self.start + self.duration
@@ -377,6 +416,12 @@ impl Clip {
             return Err(format!("a clip may not end after {MAX_SECONDS} s"));
         }
         self.source.check()?;
+        if let Some(place) = &self.place {
+            if !self.source.has_picture() {
+                return Err("a place needs a clip with a picture".into());
+            }
+            place.check()?;
+        }
         if self.effects.len() > 64 {
             return Err("at most 64 effects on a clip".into());
         }
@@ -556,6 +601,7 @@ mod tests {
             effects: vec![],
             label: None,
             caption: None,
+            place: None,
         }
     }
 
@@ -584,6 +630,60 @@ mod tests {
     }
 
     #[test]
+    fn a_place_roundtrips_exactly() {
+        let mut p = project();
+        // The box fits the frame exactly.
+        p.tracks[0].clips[0].place = Some(Place { x: 0.5, y: 0.25, w: 0.5, h: 0.75 });
+        p.validate().unwrap();
+        let text = serde_json::to_string(&p).unwrap();
+        assert!(text.contains("\"place\":{\"x\":0.5,\"y\":0.25,\"w\":0.5,\"h\":0.75}"), "{text}");
+        assert_eq!(serde_json::from_str::<Project>(&text).unwrap(), p);
+    }
+
+    #[test]
+    fn no_place_is_not_written() {
+        let p = project();
+        p.validate().unwrap();
+        let text = serde_json::to_string(&p).unwrap();
+        assert!(!text.contains("place"), "{text}");
+    }
+
+    #[test]
+    fn old_json_without_a_place_still_validates() {
+        let json = r#"{"name":"p","tracks":[{"id":"v","kind":"video","clips":[
+            {"id":"c","start":0.0,"duration":0.5,
+             "source":{"type":"corpus_clip","corpus":"c","clip_id":1,"in":0.0,"out":0.5}}]}]}"#;
+        let p: Project = serde_json::from_str(json).unwrap();
+        assert!(p.tracks[0].clips[0].place.is_none());
+        p.validate().unwrap();
+        assert!(!serde_json::to_string(&p).unwrap().contains("place"));
+    }
+
+    #[test]
+    fn validation_catches_bad_places() {
+        let bad = |f: &dyn Fn(&mut Project)| {
+            let mut p = project();
+            f(&mut p);
+            p.validate().expect_err("should be refused")
+        };
+        let place = |x, y, w, h| Some(Place { x, y, w, h });
+        assert!(bad(&|p| p.tracks[0].clips[0].place = place(1.5, 0.0, 0.5, 0.5))
+            .contains("place x must be between 0 and 1"));
+        assert!(bad(&|p| p.tracks[0].clips[0].place = place(0.0, f64::NAN, 0.5, 0.5))
+            .contains("place y must be between 0 and 1"));
+        assert!(bad(&|p| p.tracks[0].clips[0].place = place(0.0, 0.0, 0.0, 0.5))
+            .contains("place w and h must be more than 0"));
+        assert!(bad(&|p| p.tracks[0].clips[0].place = place(0.7, 0.0, 0.5, 0.5))
+            .contains("place x + w and y + h must be at most 1"));
+        // A synth clip has no picture, so there is nothing to place.
+        assert!(bad(&|p| {
+            p.tracks[0].clips[0].source = ClipSource::Synth { chip: "nes".into(), notes: vec![] };
+            p.tracks[0].clips[0].place = place(0.0, 0.0, 0.5, 0.5);
+        })
+        .contains("a place needs a clip with a picture"));
+    }
+
+    #[test]
     fn every_source_and_effect_roundtrips() {
         let mut p = project();
         let mut a = Track::new("a1", TrackKind::Audio, "Chip");
@@ -598,6 +698,7 @@ mod tests {
             effects: vec![Effect::Volume { db: -3.0 }, Effect::Pitch { semitones: 2.0 }],
             label: Some("lead".into()),
             caption: None,
+            place: None,
         });
         a.clips.push(Clip {
             id: "m".into(),
@@ -607,6 +708,7 @@ mod tests {
             effects: vec![Effect::Reverse, Effect::Stutter, Effect::Mirror, Effect::Glitch { name: "shake".into() }],
             label: None,
             caption: Some(Caption { text: "hi".into(), words: vec![("hi".into(), 0.0, 0.2)] }),
+            place: None,
         });
         a.clips.push(Clip {
             id: "g".into(),
@@ -629,6 +731,7 @@ mod tests {
             ],
             label: None,
             caption: None,
+            place: None,
         });
         p.tracks.push(a);
         p.generator = Some(Generator { kind: GeneratorKind::Ytp, request: serde_json::json!({"text": "x"}), seed: "7".into() });

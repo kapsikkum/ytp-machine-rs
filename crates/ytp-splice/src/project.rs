@@ -150,6 +150,7 @@ pub fn project_from_plan(
             effects: effects_of(seg, opts),
             label: (!seg.word.is_empty()).then(|| seg.word.clone()),
             caption,
+            place: None,
         });
         t += duration;
     }
