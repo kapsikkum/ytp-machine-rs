@@ -7,6 +7,7 @@ import type {
   MidiAnalysis,
   MidiEntry,
   PartSettingsJson,
+  Preset,
   Recommended,
   Role,
   Quota,
@@ -288,6 +289,12 @@ export const api = {
     /** Cancels an active job; deletes a finished one with its video. */
     cancel: (id: string) => request<void>(`/jobs/${enc(id)}`, json('DELETE')),
     resultUrl: (id: string) => `${BASE}/jobs/${enc(id)}/result`
+  },
+  encode: {
+    /** Every preset an export may ask for; `allowed: false` marks an hq preset this caller cannot use. */
+    presets: () => request<{ hq: boolean; presets: Preset[] }>('/encode/presets'),
+    /** Re-encode a finished job with another preset; a new `encode` job starts. */
+    export: (id: string, preset: string) => request<{ job_id: string }>(`/jobs/${enc(id)}/export`, json('POST', { preset }))
   },
   projects: {
     list: () => request<ProjectMeta[]>('/projects'),

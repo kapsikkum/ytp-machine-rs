@@ -8,6 +8,8 @@
 
 <script lang="ts">
   // The finished video, its words (found / spliced / missing), and again/download.
+  import ExportDialog from '#lib/components/ExportDialog.svelte';
+
   let {
     src,
     words = [],
@@ -17,6 +19,13 @@
 
   let video = $state<HTMLVideoElement>();
   let now = $state(-1);
+
+  // The dialog needs the finished job's id; the card only gets its result URL.
+  const jobId = $derived.by(() => {
+    const m = /\/jobs\/([^/]+)\/result/.exec(src);
+    return m ? decodeURIComponent(m[1]) : null;
+  });
+  let exporting = $state(false);
 
   function jump(w: ResultWord) {
     if (video && w.kind !== 'missing' && w.start !== undefined) {
@@ -54,10 +63,15 @@
     <span class="summary">{summary}</span>
     <div class="acts2">
       {#if onagain}<button type="button" class="btn" title="Same words, picked again" onclick={onagain}>↻ again</button>{/if}
+      {#if jobId}<button type="button" class="btn" title="Re-encode this video with another preset" onclick={() => (exporting = true)}>⇥ export…</button>{/if}
       <a class="btn primary" href={src} download>⤓ download</a>
     </div>
   </div>
 </section>
+
+{#if exporting && jobId}
+  <ExportDialog job_id={jobId} onclose={() => (exporting = false)} />
+{/if}
 
 <style>
   .result { padding: .75rem; overflow: hidden; animation: rise .35s var(--ease); }

@@ -161,6 +161,27 @@ export interface JobRecord {
   kind?: string;
 }
 
+/** One entry of `GET /api/encode/presets`; `allowed: false` means it needs `export.hq`. */
+export interface Preset {
+  name: string;
+  title: string;
+  container: 'mp4' | 'mkv' | 'gif' | 'm4a' | 'ogg';
+  video_codec: 'h264' | 'h265' | 'gif' | 'none';
+  audio_codec: 'aac' | 'opus' | 'none';
+  quality: 'crf' | 'target_size_mb' | 'bitrate';
+  crf: number | null;
+  target_mb: number | null;
+  bitrate_kbps: number | null;
+  audio_kbps: number;
+  max_width: number;
+  max_height: number;
+  fps_cap: number;
+  gop: number;
+  hw: 'auto' | 'never';
+  hq: boolean;
+  allowed: boolean;
+}
+
 // ── YTPMV ────────────────────────────────────────────────────────────────────
 
 export interface MidiEntry {
