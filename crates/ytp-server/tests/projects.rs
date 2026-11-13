@@ -694,3 +694,42 @@ async fn the_same_prompt_and_seed_expand_to_the_same_clip_times() {
     assert!(other.tracks[0].clips.iter().all(|c| matches!(c.source, ytp_core::ClipSource::CorpusClip { .. })));
     eprintln!("seed 42: {:?}\nseed 43: {:?}", starts(&first), starts(&other));
 }
+
+// ── Scratch left by a dead server ────────────────────────────────────────────
+
+#[test]
+fn the_startup_sweep_removes_only_the_names_a_render_makes_for_itself() {
+    let dir = tempfile::tempdir().unwrap();
+    let work = dir.path().join("project-work");
+    std::fs::create_dir_all(&work).unwrap();
+
+    // What `sequence::scratch` and `Env::filler` write: the composite and its
+    // per-layer inputs, the cached filler and the temp it is renamed from.
+    let scratch = [
+        "pip-34852-2.mp4",
+        "pip-34852-38.mp4",
+        "pip-0-34852-1.mp4",
+        "pip-3-34852-37.mp4",
+        "filler-12s.mp4",
+        "filler-12s.34852.tmp.mp4",
+    ];
+    // A file that merely lives in the work directory, and names that only look
+    // like scratch: another extension, a bare prefix with no tag, a prefix on
+    // the wrong side of the stem, a half-written non-mp4.
+    let keep = ["keep-me.mp4", "pip-notes.txt", "pip-.mp4", "notes-filler.mp4", "pip-34852-2.mp4.part"];
+    for name in scratch.iter().chain(keep.iter()) {
+        std::fs::write(work.join(name), b"x").unwrap();
+    }
+
+    let removed = ytp_server::projects::sweep_scratch(&work);
+    assert_eq!(removed, scratch.len(), "the sweep answered with another count than it removed");
+    for name in scratch {
+        assert!(!work.join(name).exists(), "{name} was left behind by the sweep");
+    }
+    for name in keep {
+        assert!(work.join(name).exists(), "the sweep removed {name}, which no render makes");
+    }
+    // A missing directory is not an error, and nothing else in it is touched.
+    assert_eq!(ytp_server::projects::sweep_scratch(&dir.path().join("not-there")), 0);
+    assert_eq!(std::fs::read_dir(&work).unwrap().count(), keep.len());
+}

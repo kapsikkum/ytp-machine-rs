@@ -49,6 +49,41 @@ const PREVIEW_HEIGHT: u32 = 270;
 /// Bump to drop every cached preview after a rendering change.
 const PREVIEW_VERSION: u32 = 1;
 
+/// Scratch names a render writes into the work directory, as prefix and
+/// suffix: the compositor's `pip-<pid>-<n>.mp4` and `pip-<k>-<pid>-<n>.mp4`,
+/// the filler `filler-12s.mp4` and its `filler-12s.<pid>.tmp.mp4`, and the
+/// synthesised `synth-<key>.wav` with its `synth-<key>.<pid>.tmp`.
+const SCRATCH_NAMES: &[(&str, &str)] = &[("pip-", ".mp4"), ("filler-", ".mp4"), ("synth-", ".wav"), ("synth-", ".tmp")];
+
+/// Whether `name` is one a render makes for itself in the work directory.
+fn is_scratch_name(name: &str) -> bool {
+    SCRATCH_NAMES.iter().any(|(prefix, suffix)| {
+        name.strip_prefix(prefix).and_then(|rest| rest.strip_suffix(suffix)).is_some_and(|mid| !mid.is_empty())
+    })
+}
+
+/// Remove the scratch files an earlier server process left in `dir`, answering
+/// with how many went. A plan removes its own when it is dropped, so a file
+/// still there belongs to a process that died; a name no render makes is left
+/// alone, and so is a file that will not go.
+pub fn sweep_scratch(dir: &Path) -> usize {
+    let Ok(rd) = std::fs::read_dir(dir) else {
+        return 0;
+    };
+    let mut removed = 0;
+    for e in rd.flatten() {
+        let name = e.file_name();
+        let Some(name) = name.to_str() else { continue };
+        if !is_scratch_name(name) {
+            continue;
+        }
+        if std::fs::remove_file(e.path()).is_ok() {
+            removed += 1;
+        }
+    }
+    removed
+}
+
 pub struct Service {
     pub renderer: FfmpegRenderer,
     pub proxy: Arc<ProxyCache>,
@@ -71,11 +106,16 @@ impl Service {
                 }
             }
         }
+        let work_dir = cache.join("project-work");
+        // A render clears its own scratch, so what is left in the work
+        // directory is from a process that died; nothing is running yet.
+        let swept = sweep_scratch(&work_dir);
+        tracing::info!(files = swept, dir = %work_dir.display(), "cleared scratch a previous server left in the work directory");
         Self {
             renderer: FfmpegRenderer::new(ffmpeg.clone()),
             proxy: ProxyCache::new(cache.join("proxy"), PROXY_CACHE_BYTES, encoder),
             ffmpeg,
-            work_dir: cache.join("project-work"),
+            work_dir,
             preview_dir,
             media_dir: data_dir.join("media"),
             previews: Semaphore::new(CONCURRENT_PREVIEWS),
