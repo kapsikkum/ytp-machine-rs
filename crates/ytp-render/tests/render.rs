@@ -210,6 +210,85 @@ fn overlapping_video_and_generated_clips_are_refused_in_words() {
     assert!(render_full(&w.env(), &r, &out, &FullOptions { max_height: 0, encoder: None, cancel: None }, &|_, _, _| true).is_err());
 }
 
+fn make_colour(dir: &Path, name: &str, colour: &str) {
+    let path = dir.join(name);
+    let ok = Command::new(ffmpeg())
+        .args(["-y", "-v", "error", "-f", "lavfi", "-i"])
+        .arg(format!("color=c={colour}:s=480x270:r=25:d=3"))
+        .args(["-f", "lavfi", "-i", "sine=frequency=440:sample_rate=44100", "-t", "3"])
+        .args(["-pix_fmt", "yuv420p", "-c:v", "libx264", "-preset", "ultrafast", "-c:a", "aac"])
+        .arg(&path)
+        .status()
+        .unwrap()
+        .success();
+    assert!(ok, "could not make {name}");
+}
+
+/// One frame of `path` at `t` seconds, as 480x270 RGB.
+fn frame(path: &Path, t: f64) -> Vec<u8> {
+    let out = Command::new(ffmpeg())
+        .args(["-v", "error", "-ss", &format!("{t:.3}"), "-i"])
+        .arg(path)
+        .args(["-frames:v", "1", "-f", "rawvideo", "-pix_fmt", "rgb24", "-"])
+        .output()
+        .unwrap();
+    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+    assert_eq!(out.stdout.len(), 480 * 270 * 3, "no frame at {t} s");
+    out.stdout
+}
+
+fn pixel(f: &[u8], x: usize, y: usize) -> (u8, u8, u8) {
+    let i = (y * 480 + x) * 3;
+    (f[i], f[i + 1], f[i + 2])
+}
+
+#[test]
+fn clips_on_different_video_tracks_are_composited_picture_in_picture() {
+    let Some(w) = World::new() else { return };
+    let corpus = w.dir.path().join("corpus").join("downloads");
+    make_colour(&corpus, "green.mp4", "lime");
+    make_colour(&corpus, "red.mp4", "red");
+
+    let mut p = Project::new("pip");
+    let mut under = video_track(&[("downloads/green.mp4", 0.0, 2.0, 0.0, 2.0)], &w);
+    under.clips[0].id = "under".into();
+    let mut over = video_track(&[("downloads/red.mp4", 0.5, 1.0, 0.0, 1.0)], &w);
+    over.id = "v2".into();
+    over.name = "Over".into();
+    over.clips[0].id = "over".into();
+    p.tracks.push(under);
+    p.tracks.push(over);
+    p.validate().unwrap();
+
+    let out = w.dir.path().join("pip.mp4");
+    let len = full(&w, &p, &out);
+    assert!((len - 2.0).abs() < 1e-9);
+    let pr = w.probe(&out);
+    assert!(pr.has_video && pr.has_audio, "the bottom clip keeps its sound");
+    assert!((pr.duration - 2.0).abs() < 0.25, "{}", pr.duration);
+    assert_eq!((pr.streams[0].width, pr.streams[0].height), (480, 270), "the frame is the project's");
+
+    // During the overlap the later track is a quarter-frame at the bottom right.
+    let f = frame(&out, 1.0);
+    let (r, g, b) = pixel(&f, 400, 200);
+    assert!(r > 150 && g < 100 && b < 100, "the bottom right is {r},{g},{b}");
+    // ... and the clip underneath is still seen around it.
+    let (r, g, b) = pixel(&f, 60, 60);
+    assert!(g > 150 && r < 100, "the bottom clip is still visible: {r},{g},{b}");
+    // Before the overlap the whole frame is the bottom clip.
+    let f = frame(&out, 0.2);
+    let (r, g, b) = pixel(&f, 400, 200);
+    assert!(g > 150 && r < 100, "no picture-in-picture before it starts: {r},{g},{b}");
+
+    // A preview window across the overlap renders too.
+    let pv = w.dir.path().join("pip-preview.mp4");
+    let info = render_preview(&w.env(), &p, 0.2, 1.0, &pv, None, &|| true).unwrap();
+    assert!((info.duration - 1.0).abs() < 1e-9);
+    let pr = w.probe(&pv);
+    assert!((pr.duration - 1.0).abs() < 0.25, "preview is {} s", pr.duration);
+    assert!(pr.has_video);
+}
+
 #[test]
 fn a_window_previews_at_the_asked_length_and_matches_the_plan() {
     let Some(w) = World::new() else { return };
