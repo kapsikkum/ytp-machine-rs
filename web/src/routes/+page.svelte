@@ -138,9 +138,13 @@
   }
 
   // A clip dragged or trimmed on the timeline. The move lands in the project
-  // and marks it unsaved; a drag fires many events, so one undo snapshot is
-  // taken once the pointer settles instead of one per pixel.
+  // and marks it unsaved; a drag fires many events, so the whole drag leaves at
+  // most one undo snapshot. The timer is a fallback for a drag that pauses or
+  // ends without its release event; once it has taken the drag's snapshot it
+  // only refreshes it, so a 12-step drag still needs one Ctrl+Z.
   let moveTimer: ReturnType<typeof setTimeout> | undefined;
+  let movePending = false; // this drag has changed the project
+  let moveRecorded = false; // ... and the drag's one snapshot exists
 
   function moveClip(trackId: string, clipId: string, start: number, length: number) {
     if (!project) return;
@@ -153,18 +157,45 @@
     clip.start = s;
     clip.duration = d;
     dirty = true;
+    movePending = true;
     if (moveTimer !== undefined) clearTimeout(moveTimer);
     moveTimer = setTimeout(() => {
       moveTimer = undefined;
-      record();
+      if (!movePending) return;
+      movePending = false;
+      if (moveRecorded) replaceMove();
+      else {
+        moveRecorded = true;
+        record();
+      }
     }, 250);
   }
 
-  // An undo/redo cancels a snapshot still waiting on that timer.
+  // Refresh the drag's snapshot in place, so intermediate states of the same
+  // gesture never become undo steps of their own.
+  function replaceMove() {
+    if (!project || !history) return;
+    history.replace($state.snapshot(project) as Project);
+    syncHistory();
+  }
+
+  // The drag ended: drop the pending timer and leave one snapshot holding the
+  // final state - either the first one recorded now, or the mid-drag one
+  // refreshed. Never pushes a second snapshot for the same drag.
+  function endClipMove() {
+    const recorded = moveRecorded;
+    const pending = movePending;
+    cancelMove();
+    if (recorded) replaceMove();
+    else if (pending) record();
+  }
+
+  // An undo/redo/new project cancels a snapshot still waiting on that timer.
   function cancelMove() {
-    if (moveTimer === undefined) return;
-    clearTimeout(moveTimer);
+    if (moveTimer !== undefined) clearTimeout(moveTimer);
     moveTimer = undefined;
+    movePending = false;
+    moveRecorded = false;
   }
 
   function flag(id: string, f: 'mute' | 'solo') {
@@ -376,6 +407,7 @@
               onselect={(id) => { selected = id; if (selectedClip && selectedClip.track !== id) selectedClip = null; }}
               onselectclip={(track, clip) => { selected = track; selectedClip = { track, clip }; }}
               onclipmove={canWrite ? moveClip : undefined}
+              onclipmoveend={canWrite ? endClipMove : undefined}
               onflag={flag} empty="Add a track to begin." />
   </div>
 

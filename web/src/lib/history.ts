@@ -73,6 +73,15 @@ export class ProjectHistory {
     this.cursor = this.states.length - 1;
   }
 
+  /**
+   * Replace the CURRENT snapshot in place: an ongoing gesture's newer state,
+   * not a new edit. The cursor, the number of snapshots and the capacity stay
+   * as they are.
+   */
+  replace(project: Project): void {
+    this.states[this.cursor] = structuredClone(project);
+  }
+
   /** The snapshot one edit back, made current, or `null` at the oldest state. */
   undo(): Project | null {
     if (this.cursor === 0) return null;

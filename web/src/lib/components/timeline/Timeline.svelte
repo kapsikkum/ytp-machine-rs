@@ -13,6 +13,7 @@
     onselect,
     onselectclip,
     onclipmove,
+    onclipmoveend,
     onflag,
     empty = 'No tracks yet.'
   }: {
@@ -25,6 +26,8 @@
     onselectclip?: (track: string, clip: string) => void;
     /** A drag or trim, already clamped: new start and length, seconds. */
     onclipmove?: (track: string, clip: string, start: number, length: number) => void;
+    /** A drag that actually moved has ended: one snapshot for the whole drag. */
+    onclipmoveend?: (track: string, clip: string) => void;
     onflag?: (id: string, flag: 'mute' | 'solo') => void;
     empty?: string;
   } = $props();
@@ -124,12 +127,17 @@
     onclipmove(track.id, clip, s, l);
   }
 
+  // Bound to both pointerup and pointercancel, so a cancelled gesture still
+  // reports its end.
   function end(e: PointerEvent) {
     const el = e.currentTarget as HTMLElement;
     if (el.hasPointerCapture?.(e.pointerId)) el.releasePointerCapture(e.pointerId);
+    // Only a drag that moved ends with a signal; a plain click stays silent.
+    const done = moved ? drag : null;
     swallow = moved;
     moved = false;
     drag = null;
+    if (done) onclipmoveend?.(done.track.id, done.clip);
   }
 </script>
 
