@@ -3,6 +3,7 @@
   import { page } from '$app/state';
   import { api, ApiError, errorText, type PreviewInfo } from '#lib/api.ts';
   import { can } from '#lib/auth.ts';
+  import { ProjectHistory } from '#lib/history.ts';
   import { mixOf, projectDuration, toTimelineTracks, type Project, type ProjectMeta, type StoredProject } from '#lib/project.ts';
   import { TRACK_COLORS, type Track, type TrackKind } from '#lib/timeline.ts';
   import { jobEvents, subscribeTopic } from '#lib/ws.ts';
@@ -29,6 +30,11 @@
 
   let stored = $state<StoredProject | null>(null);
   let project = $state<Project | null>(null);
+  // Undo/redo over the editable state, mirroring the Rust `History`. The
+  // stack itself is not reactive; `undoable`/`redoable` expose its edges.
+  let history: ProjectHistory | null = null;
+  let undoable = $state(false);
+  let redoable = $state(false);
   let dirty = $state(false);
   let loading = $state(false);
   let loadError = $state('');
@@ -46,6 +52,9 @@
     const id = projectId;
     stored = null;
     project = null;
+    history = null;
+    undoable = false;
+    redoable = false;
     dirty = false;
     loadError = '';
     playhead = 0;
@@ -63,6 +72,8 @@
         if (!live) return;
         stored = r;
         project = r.project;
+        history = new ProjectHistory(r.project);
+        syncHistory();
       })
       .catch((e) => {
         if (live) loadError = e instanceof ApiError && e.status === 404 ? 'There is no such project, or it is not shared with you.' : errorText(e);
@@ -109,8 +120,64 @@
     if (t) {
       t[f] = !t[f];
       dirty = true;
+      record();
     }
   }
+
+  // Mirror the history edges into reactive flags so the toolbar can react.
+  function syncHistory() {
+    undoable = history?.canUndo() ?? false;
+    redoable = history?.canRedo() ?? false;
+  }
+
+  // Record the current project as the newest undoable state.
+  function record() {
+    if (!project) return;
+    history?.apply($state.snapshot(project) as Project);
+    syncHistory();
+  }
+
+  function undo() {
+    if (!project || !history) return;
+    const p = history.undo();
+    if (!p) return;
+    project = p;
+    dirty = true;
+    syncHistory();
+  }
+
+  function redo() {
+    if (!project || !history) return;
+    const p = history.redo();
+    if (!p) return;
+    project = p;
+    dirty = true;
+    syncHistory();
+  }
+
+  // Undo/redo keys while a project is open; the listener goes away with the
+  // page (or when another project is opened). Typing fields keep their own
+  // Ctrl+Z.
+  $effect(() => {
+    if (!project) return;
+    function onKey(e: KeyboardEvent) {
+      if (!project || !history || e.isComposing) return;
+      const t = e.target as HTMLElement | null;
+      const tag = t?.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || t?.isContentEditable) return;
+      if (!(e.ctrlKey || e.metaKey)) return;
+      const key = e.key.toLowerCase();
+      if (key === 'z' && !e.shiftKey) {
+        e.preventDefault();
+        undo();
+      } else if ((key === 'z' && e.shiftKey) || key === 'y') {
+        e.preventDefault();
+        redo();
+      }
+    }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  });
 
   // What the preview windows are made of: changes when the project, its
   // revision or the mixer does.
@@ -202,6 +269,8 @@
     <span class="meta">render: {renderState}</span>
     {#if renderState === 'done'}<a class="btn" href={api.jobs.resultUrl(renderJob)} download>download</a>{/if}
   {/if}
+  {#if project && canWrite}<button type="button" disabled={!undoable} title="Undo (Ctrl+Z)" onclick={undo}>undo</button>{/if}
+  {#if project && canWrite}<button type="button" disabled={!redoable} title="Redo (Ctrl+Shift+Z)" onclick={redo}>redo</button>{/if}
   {#if project && canWrite}<button type="button" disabled={!dirty} onclick={saveProject}>save</button>{/if}
   {#if project && $can('export.render')}<button type="button" class="primary" onclick={renderVideo}>render video</button>{/if}
 </div>
