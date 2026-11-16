@@ -49,6 +49,14 @@
   let noteIsError = $state(false);
   let lastPreview = $state('');
 
+  // Renaming happens in place: the subbar turns the name into a field the
+  // visitor types, and only the new name is posted (crates/ytp-server/src/
+  // projects.rs takes name and revision together). Deleting is the owner's
+  // alone, so both wait on one busy flag while the request runs.
+  let renaming = $state(false);
+  let renameValue = $state('');
+  let projectBusy = $state(false);
+
   // Load the project named in the address; list the recent ones when none is.
   $effect(() => {
     const id = projectId;
@@ -66,6 +74,9 @@
     note = '';
     addNote = '';
     lastPreview = '';
+    renaming = false;
+    renameValue = '';
+    projectBusy = false;
     cancelMove();
     loading = false;
     if (id === null) {
@@ -482,6 +493,58 @@
     }
   }
 
+  // Rename in place: the subbar swaps the name for a field the visitor types, so
+  // the new name can be checked before it is posted, and cancel leaves the
+  // project untouched.
+  function startRename() {
+    renaming = true;
+    renameValue = project?.name ?? '';
+  }
+
+  function cancelRename() {
+    renaming = false;
+  }
+
+  async function saveRename(e: SubmitEvent) {
+    e.preventDefault();
+    const name = renameValue.trim();
+    if (!stored || !name || projectBusy) return;
+    projectBusy = true;
+    note = '';
+    noteIsError = false;
+    try {
+      const r = await api.projects.update(stored.id, { name, revision: stored.revision });
+      stored = r;
+      project = r.project;
+      renaming = false;
+      note = 'renamed';
+    } catch (err) {
+      note = errorText(err);
+      noteIsError = true;
+    } finally {
+      projectBusy = false;
+    }
+  }
+
+  // Delete the whole project, which no undo can bring back: it asks for
+  // confirmation and then leaves the page, whose project no longer exists.
+  async function deleteProject() {
+    if (!stored || !project) return;
+    if (!confirm(`Delete "${project.name}"? This cannot be undone.`)) return;
+    projectBusy = true;
+    note = '';
+    noteIsError = false;
+    try {
+      await api.projects.remove(stored.id);
+      await goto('/');
+    } catch (err) {
+      note = errorText(err);
+      noteIsError = true;
+    } finally {
+      projectBusy = false;
+    }
+  }
+
   // Full-quality render as a job.
   let renderJob = $state<string | null>(null);
   let renderState = $state('');
@@ -549,8 +612,20 @@
 <div class="subbar">
   <span class="title">studio</span>
   {#if project}
-    <b class="name">{project.name}</b>
+    {#if renaming && canWrite}
+      <form class="rename" onsubmit={saveRename}>
+        <input type="text" bind:value={renameValue} maxlength="120" placeholder="new name"
+               aria-label="New project name" disabled={projectBusy} />
+        <button type="submit" disabled={projectBusy || !renameValue.trim()}
+                title="Save the new project name">{projectBusy ? 'renaming…' : 'save name'}</button>
+        <button type="button" title="Keep the current name" onclick={cancelRename}>cancel</button>
+      </form>
+    {:else}
+      <b class="name">{project.name}</b>
+    {/if}
     <span class="meta">{summary}</span>
+    {#if canWrite && !renaming}<button type="button" title="Rename this project" onclick={startRename}>rename</button>{/if}
+    {#if stored?.access === 'owner' && canWrite}<button type="button" class="danger" disabled={projectBusy} title="Delete this project">delete</button>{/if}
   {:else}
     <span class="meta">no project open</span>
   {/if}
@@ -684,6 +759,9 @@
 
 <style>
   .subbar .name { font-size: .8rem; font-weight: 500; }
+  .rename { display: inline-flex; align-items: center; gap: .3rem; }
+  .rename input { max-width: 14rem; }
+  .rename button { font-size: .72rem; padding: .22rem .55rem; }
   .meta { color: var(--dim); font-size: .7rem; }
   .note { color: var(--amber); font-size: .74rem; }
   .note.err { color: var(--red); }
