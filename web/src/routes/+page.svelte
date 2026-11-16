@@ -625,7 +625,7 @@
     {/if}
     <span class="meta">{summary}</span>
     {#if canWrite && !renaming}<button type="button" title="Rename this project" onclick={startRename}>rename</button>{/if}
-    {#if stored?.access === 'owner' && canWrite}<button type="button" class="danger" disabled={projectBusy} title="Delete this project">delete</button>{/if}
+    {#if stored?.access === 'owner' && canWrite}<button type="button" class="danger" disabled={projectBusy} title="Delete this project" onclick={deleteProject}>delete</button>{/if}
   {:else}
     <span class="meta">no project open</span>
   {/if}
