@@ -415,6 +415,33 @@
     record();
   }
 
+  // Copy the selected clip to the end of its own track. The new clip starts
+  // after the last one, so it can never overlap (the renderer refuses same-track
+  // overlaps), and it takes the first free `c<n>` id so it is distinct. The copy
+  // keeps everything the original carried - duration, source, effects, place,
+  // caption and label - and the duplicate becomes the selection.
+  function duplicateClip() {
+    if (!project || !selection || !selectedClip || !canWrite) return;
+    const s = selectedClip;
+    const track = project.tracks.find((t) => t.id === s.track);
+    if (!track) return;
+    const clip = track.clips.find((c) => c.id === s.clip);
+    if (!clip) return;
+    const used = new Set(project.tracks.flatMap((t) => t.clips.map((c) => c.id)));
+    let n = 0;
+    while (used.has(`c${n}`)) n += 1;
+    const id = `c${n}`;
+    const start = track.clips.reduce((m, c) => Math.max(m, c.start + c.duration), 0);
+    const copy = structuredClone($state.snapshot(clip)) as ProjectClip;
+    copy.id = id;
+    copy.start = start;
+    track.clips.push(copy);
+    selected = track.id;
+    selectedClip = { track: track.id, clip: id };
+    dirty = true;
+    record();
+  }
+
   // A clip dragged or trimmed on the timeline. The move lands in the project
   // and marks it unsaved; a drag fires many events, so the whole drag leaves at
   // most one undo snapshot. The timer is a fallback for a drag that pauses or
@@ -800,6 +827,8 @@
         <span class="add">
           <button type="button" class="danger" disabled={!canWrite} title="Remove this clip from its track"
                   onclick={deleteClip}>delete clip</button>
+          <button type="button" disabled={!canWrite} title="Copy this clip to the end of its track"
+                  onclick={duplicateClip}>duplicate</button>
         </span>
         <span class="meta">a clip may overlap one on its new track; that renders as picture-in-picture</span>
       </div>
