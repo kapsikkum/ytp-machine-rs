@@ -14,5 +14,12 @@ export default defineConfig({
     proxy: {
       '/api': { target: backend, changeOrigin: false, ws: true }
     }
+  },
+  // The same API proxy for `vite preview`, so a production build can be
+  // exercised against the running server without rebuilding the Rust binary.
+  preview: {
+    proxy: {
+      '/api': { target: backend, changeOrigin: false, ws: true }
+    }
   }
 });
