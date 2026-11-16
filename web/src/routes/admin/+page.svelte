@@ -6,13 +6,15 @@
   import RolesPanel from '#lib/components/RolesPanel.svelte';
   import TokensPanel from '#lib/components/TokensPanel.svelte';
   import AuditPanel from '#lib/components/AuditPanel.svelte';
+  import SettingsPanel from '#lib/components/SettingsPanel.svelte';
 
   const tabs = $derived(
     [
       { id: 'users', label: 'users', perm: 'users.manage' },
       { id: 'roles', label: 'roles', perm: 'roles.manage' },
       { id: 'tokens', label: 'tokens', perm: 'tokens.create' },
-      { id: 'audit', label: 'audit log', perm: 'audit.view' }
+      { id: 'audit', label: 'audit log', perm: 'audit.view' },
+      { id: 'settings', label: 'settings', perm: 'settings.manage' }
     ].filter((t) => $can(t.perm))
   );
 
@@ -37,6 +39,8 @@
     <TokensPanel />
   {:else if tab === 'audit'}
     <AuditPanel />
+  {:else if tab === 'settings'}
+    <SettingsPanel />
   {:else}
     <p class="hint">Nothing to administer with your permissions.</p>
   {/if}
