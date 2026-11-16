@@ -13,6 +13,7 @@
   import PreviewPane from '#lib/components/studio/PreviewPane.svelte';
   import PromptBox, { type Mode } from '#lib/components/studio/PromptBox.svelte';
   import Timeline from '#lib/components/timeline/Timeline.svelte';
+  import ShareDialog from '#lib/components/ShareDialog.svelte';
 
   // The Studio: preview, prompt, and a multi-track timeline. `?project=<id>`
   // opens a project (what "Open in Studio" on the Say and Song pages makes):
@@ -46,6 +47,7 @@
   let selected = $state<string | null>(null);
   // The clip whose effects the panel edits: its track and clip ids.
   let selectedClip = $state<{ track: string; clip: string } | null>(null);
+  let sharing = $state(false);
   let note = $state('');
   let noteIsError = $state(false);
   let lastPreview = $state('');
@@ -63,6 +65,7 @@
     playhead = 0;
     playing = false;
     selectedClip = null;
+    sharing = false;
     note = '';
     addNote = '';
     cancelMove();
@@ -518,6 +521,7 @@
   {#if project && canWrite}<button type="button" disabled={!undoable} title="Undo (Ctrl+Z)" onclick={undo}>undo</button>{/if}
   {#if project && canWrite}<button type="button" disabled={!redoable} title="Redo (Ctrl+Shift+Z)" onclick={redo}>redo</button>{/if}
   {#if project && canWrite}<button type="button" disabled={!dirty} onclick={saveProject}>save</button>{/if}
+  {#if stored && stored.access === 'owner' && $can('project.share')}<button type="button" onclick={() => (sharing = true)}>share</button>{/if}
   {#if project && $can('export.render')}<button type="button" class="primary" onclick={renderVideo}>render video</button>{/if}
 </div>
 
@@ -598,6 +602,10 @@
     <EffectsPanel clip={selection} editable={canWrite} onchange={setEffects} onplace={setPlace} ongenerated={setGenerated} />
   {:else if project}
     <p class="meta">Select a clip in the timeline to edit its effects.</p>
+  {/if}
+
+  {#if sharing && stored}
+    <ShareDialog projectId={stored.id} onclose={() => (sharing = false)} />
   {/if}
 </div>
 
