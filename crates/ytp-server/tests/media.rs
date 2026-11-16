@@ -181,18 +181,9 @@ async fn another_users_asset_is_invisible_and_unplayable() {
         .await;
     assert_eq!(created.status, StatusCode::OK, "{:?}", created.body);
     let pid = created.body["id"].as_i64().unwrap();
-    let preview = t
-        .post("/api/preview", &bob, json!({ "project_id": pid, "start": 0.0, "duration": 0.4 }))
-        .await;
-    assert_eq!(preview.status, StatusCode::UNPROCESSABLE_ENTITY, "{:?}", preview.body);
-    let message = preview.body["message"].as_str().unwrap_or("");
-    assert!(
-        message.contains("is not in this project owner's media library"),
-        "{message}"
-    );
 
-    // The owner can still see and use it.
-    assert_eq!(t.get("/api/media", &admin).await.body.as_array().unwrap().len(), 1);
+    // The owner renders the very same window FIRST, so a cache entry exists: the
+    // preview key must not let bob reach it (it hashes the owner).
     let mine = t
         .post("/api/projects", &admin, json!({ "project": media_project("mine", &id) }))
         .await;
@@ -207,6 +198,22 @@ async fn another_users_asset_is_invisible_and_unplayable() {
         "video/mp4",
         "the owner's media clip renders"
     );
+
+    let preview = t
+        .post("/api/preview", &bob, json!({ "project_id": pid, "start": 0.0, "duration": 0.4 }))
+        .await;
+    assert_eq!(preview.status, StatusCode::UNPROCESSABLE_ENTITY, "{:?}", preview.body);
+    assert!(
+        preview.body["message"]
+            .as_str()
+            .unwrap_or("")
+            .contains("is not in this project owner's media library"),
+        "{:?}",
+        preview.body
+    );
+
+    // The owner's asset is still listed for the owner.
+    assert_eq!(t.get("/api/media", &admin).await.body.as_array().unwrap().len(), 1);
 }
 
 #[tokio::test]

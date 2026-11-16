@@ -47,7 +47,7 @@ const CONCURRENT_PREVIEWS: usize = 3;
 /// Height of a song preview's picture.
 const PREVIEW_HEIGHT: u32 = 270;
 /// Bump to drop every cached preview after a rendering change.
-const PREVIEW_VERSION: u32 = 1;
+const PREVIEW_VERSION: u32 = 2;
 
 /// Scratch names a render writes into the work directory, as prefix and
 /// suffix: the compositor's `pip-<pid>-<n>.mp4` and `pip-<k>-<pid>-<n>.mp4`,
@@ -518,7 +518,7 @@ pub async fn preview_key(st: &AppState, p: &Project, owner: i64, start: f64, dur
                     json!({ "id": t.id, "kind": t.kind, "mute": t.mute, "solo": t.solo, "volume": t.volume, "clips": clips })
                 })
                 .collect();
-            json!({ "tracks": tracks, "captions": p.captions, "any_solo": p.tracks.iter().any(|t| t.solo) })
+            json!({ "owner": owner, "tracks": tracks, "captions": p.captions, "any_solo": p.tracks.iter().any(|t| t.solo) })
         }
     };
     corpora.sort();
