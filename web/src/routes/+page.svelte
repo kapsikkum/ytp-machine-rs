@@ -14,6 +14,7 @@
   import PreviewPane from '#lib/components/studio/PreviewPane.svelte';
   import Timeline from '#lib/components/timeline/Timeline.svelte';
   import ShareDialog from '#lib/components/ShareDialog.svelte';
+  import ExportDialog from '#lib/components/ExportDialog.svelte';
 
   // The Studio: a multi-track arrangement over a stored project. `?project=<id>`
   // opens one (what "Open in Studio" on the Say and Song pages makes). With no
@@ -484,25 +485,50 @@
   // Full-quality render as a job.
   let renderJob = $state<string | null>(null);
   let renderState = $state('');
+  // A render this job is still running: it can be cancelled and no other may
+  // start until it ends.
+  let renderActive = $state(false);
+  // The export dialog over the finished job, opened by the subbar's export.
+  let exporting = $state(false);
   async function renderVideo() {
     if (!stored) return;
     note = '';
     noteIsError = false;
+    exporting = false;
     try {
       if (dirty) await saveProject();
       const r = await api.projects.render(stored.id);
       renderJob = r.job_id;
       renderState = 'queued';
+      renderActive = true;
       subscribeTopic(`job:${r.job_id}`);
+    } catch (e) {
+      renderActive = false;
+      note = errorText(e);
+      noteIsError = true;
+    }
+  }
+
+  // Stop the render in flight. Cancelling a finished job deletes its video, so
+  // this is only offered while one runs.
+  async function cancelRender() {
+    const id = renderJob;
+    if (!id) return;
+    try {
+      await api.jobs.cancel(id);
+      renderState = 'cancelled';
+      renderActive = false;
     } catch (e) {
       note = errorText(e);
       noteIsError = true;
     }
   }
+
   $effect(() => {
     const id = renderJob;
     const ev = id ? $jobEvents[id] : undefined;
     if (!id || !ev) return;
+    renderActive = ev.state !== 'done' && ev.state !== 'failed' && ev.state !== 'cancelled';
     renderState = ev.state === 'running' ? `${ev.message ?? 'rendering'} ${Math.round(ev.progress * 100)}%` : ev.state;
   });
 
@@ -533,13 +559,17 @@
   {#if note}<span class="note" class:err={noteIsError}>{note}</span>{/if}
   {#if renderJob}
     <span class="meta">render: {renderState}</span>
-    {#if renderState === 'done'}<a class="btn" href={api.jobs.resultUrl(renderJob)} download>download</a>{/if}
+    {#if renderActive}<button type="button" title="Cancel the render in flight" onclick={cancelRender}>cancel</button>{/if}
+    {#if renderState === 'done'}
+      <a class="btn" href={api.jobs.resultUrl(renderJob)} download>download</a>
+      <button type="button" title="Re-encode this video with another preset" onclick={() => (exporting = true)}>export</button>
+    {/if}
   {/if}
   {#if project && canWrite}<button type="button" disabled={!undoable} title="Undo (Ctrl+Z)" onclick={undo}>undo</button>{/if}
   {#if project && canWrite}<button type="button" disabled={!redoable} title="Redo (Ctrl+Shift+Z)" onclick={redo}>redo</button>{/if}
   {#if project && canWrite}<button type="button" disabled={!dirty} onclick={saveProject}>save</button>{/if}
   {#if stored && stored.access === 'owner' && $can('project.share')}<button type="button" onclick={() => (sharing = true)}>share</button>{/if}
-  {#if project && $can('export.render')}<button type="button" class="primary" onclick={renderVideo}>render video</button>{/if}
+  {#if project && $can('export.render')}<button type="button" class="primary" disabled={renderActive} onclick={renderVideo}>render video</button>{/if}
 </div>
 
 <div class="studio">
@@ -645,6 +675,10 @@
 
   {#if sharing && stored}
     <ShareDialog projectId={stored.id} onclose={() => (sharing = false)} />
+  {/if}
+
+  {#if exporting && renderJob}
+    <ExportDialog job_id={renderJob} onclose={() => (exporting = false)} />
   {/if}
 </div>
 
