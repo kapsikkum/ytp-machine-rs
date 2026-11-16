@@ -11,6 +11,7 @@ export interface NavItem {
 // Labels follow the existing site: say / ytpmv / splice / corpus.
 export const NAV: NavItem[] = [
   { href: '/', label: 'studio', anyOf: ['studio.use'] },
+  { href: '/media', label: 'media', anyOf: ['media.install'] },
   { href: '/ytp', label: 'say', anyOf: ['generate.ytp'] },
   { href: '/ytpmv', label: 'ytpmv', anyOf: ['generate.ytpmv'] },
   { href: '/splice', label: 'splice', anyOf: ['corpus.read'] },
