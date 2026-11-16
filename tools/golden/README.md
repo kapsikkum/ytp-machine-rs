@@ -1,7 +1,7 @@
 # Golden parity fixtures
 
 These are outputs captured from the **Python** implementation
-(`<python app>`, read-only) on fixed inputs. The Rust port in
+(the original `ytp-machine` Python app, read-only) on fixed inputs. The Rust port in
 this repository is checked against them: same token lists, same phonemes, same
 splice plans, same audio samples.
 
@@ -12,15 +12,15 @@ the capture script only imports it and calls it.
 
 | | |
 |---|---|
-| Python | `CPython 3.13.13` (3.13.13) |
+| Python | CPython 3.13.13 (system install) |
 | numpy | 2.4.6 |
 | nltk | 3.9.4 (bundled CMUdict used for phonemes) |
 | mido | 1.3.3 |
 | OS | Windows 11 |
 
-`a virtualenv python` does **not** exist on this
-machine, so the system Python above was used. The script inserts the Python
-app's path into `sys.path` itself, so it can be run from any working directory.
+The capture script takes the Python app's path from the `MRS_PY_APP` environment
+variable and inserts it into `sys.path` itself, so it can be run from any working
+directory.
 
 No GPU, no Whisper, no network: the capture points `MRS_DATA_DIR` at an empty
 temporary directory, stubs the corpus lookups that would hit a database (the
@@ -30,7 +30,7 @@ same monkey-patching `tests/test_generate_options.py` uses), and seeds
 ## Regenerate
 
 ```powershell
-cd <repo>
+cd <this repository>
 python tools/golden/capture.py              # all sections
 python tools/golden/capture.py tokens pitch # one or more sections
 ```

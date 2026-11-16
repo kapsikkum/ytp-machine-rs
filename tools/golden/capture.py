@@ -2,7 +2,7 @@
 """Capture golden parity fixtures from the Python app.
 
 The Rust port in this repo is checked against the behaviour of the Python
-implementation in ``<python app>``.  This script runs the
+implementation located by ``MRS_PY_APP``.  This script runs the
 Python code on fixed inputs and writes the results to ``tests/golden/`` so the
 port can be compared byte-for-byte, number-for-number, sample-for-sample.
 
@@ -36,7 +36,10 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.dirname(os.path.dirname(HERE))            # ytp-machine-rs
 OUT = os.path.join(REPO, "tests", "golden")
 AUDIO = os.path.join(OUT, "audio")
-PY_APP = r"<python app>"
+# The original Python app this port is checked against (not part of this repo).
+PY_APP = os.environ.get("MRS_PY_APP") or ""
+if not PY_APP or not os.path.isdir(PY_APP):
+    raise SystemExit("set MRS_PY_APP to the original ytp-machine (Python) checkout")
 
 # An empty data directory, so nothing consults (or writes to) a real corpus.
 # The tokeniser still uses the bundled CMU dictionary through nltk, which is

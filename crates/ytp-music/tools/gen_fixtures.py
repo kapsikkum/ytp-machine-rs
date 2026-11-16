@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Extra parity fixtures for crates/ytp-music, beyond tests/golden/.
 
-Runs the Python app (READ-ONLY, <python app>) on fixed inputs
+Runs the original Python app (READ-ONLY, path in MRS_PY_APP) on fixed inputs
 and writes small JSON files (plus one MIDI file) into
 crates/ytp-music/tests/fixtures/:
 
@@ -19,7 +19,10 @@ import json
 import os
 import sys
 
-PY_APP = r"<python app>"
+# The original Python app this port is checked against (not part of this repo).
+PY_APP = os.environ.get("MRS_PY_APP") or ""
+if not PY_APP or not os.path.isdir(PY_APP):
+    raise SystemExit("set MRS_PY_APP to the original ytp-machine (Python) checkout")
 sys.path.insert(0, PY_APP)
 os.environ.setdefault("MRS_DATA_DIR", os.path.join(os.environ.get("TEMP", "."), "ytp-fixture-data"))
 

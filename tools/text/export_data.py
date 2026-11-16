@@ -17,7 +17,10 @@ import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.dirname(os.path.dirname(HERE))
-PY_APP = r"<python app>"
+# The original Python app whose tables are exported (not part of this repo).
+PY_APP = os.environ.get("MRS_PY_APP") or ""
+if not PY_APP or not os.path.isdir(PY_APP):
+    raise SystemExit("set MRS_PY_APP to the original ytp-machine (Python) checkout")
 sys.path.insert(0, PY_APP)
 os.environ.setdefault("MRS_DATA_DIR", os.path.join(os.environ.get("TEMP", "."), "ytp-export-data"))
 os.makedirs(os.environ["MRS_DATA_DIR"], exist_ok=True)

@@ -7,3 +7,4 @@ web/.svelte-kit
 
 # private agent memory, never part of the project
 MEMORY.md
+docs/strata-queue.md
