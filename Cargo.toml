@@ -43,6 +43,14 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 zstd = "0.13"
 
+# One codegen unit and thin LTO let the compiler see the whole graph, and
+# stripping symbols trims the shipped binary. Panic stays unwinding: the server
+# catches panics in job threads.
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = "symbols"
+
 # Argon2 is unbearably slow unoptimised; keep debug builds and tests snappy.
 [profile.dev.package.argon2]
 opt-level = 3
