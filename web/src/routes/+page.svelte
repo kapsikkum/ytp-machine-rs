@@ -48,6 +48,10 @@
   let note = $state('');
   let noteIsError = $state(false);
   let lastPreview = $state('');
+  // The timing fields are drafts until their set button commits them, so a
+  // half-typed number never lands in the project (or its undo history).
+  let startDraft = $state<string | number>('');
+  let durationDraft = $state<string | number>('');
 
   // Renaming happens in place: the subbar turns the name into a field the
   // visitor types, and only the new name is posted (crates/ytp-server/src/
@@ -242,6 +246,16 @@
     return track?.clips.find((c) => c.id === s.clip) ?? null;
   });
 
+  // Keep the timing drafts in step with the selected clip: a drag, an undo or
+  // opening another project changes start/duration too. Typing does not touch
+  // the model, so this never fights the visitor while the field is being edited.
+  $effect(() => {
+    const s = selection;
+    if (!s) return;
+    startDraft = s.start.toFixed(3);
+    durationDraft = s.duration.toFixed(3);
+  });
+
   // Effects edits from the panel: change the clip, then record the state so
   // undo brings the old effects back; `dirty` makes the save button persist it.
   function setEffects(effects: Effect[]) {
@@ -320,6 +334,83 @@
     to.clips.push(clip);
     selectedClip = { track: to.id, clip: clip.id };
     selected = to.id;
+    dirty = true;
+    record();
+  }
+
+  const clamp = (v: number, lo: number, hi: number) => Math.min(Math.max(v, lo), hi);
+
+  // The room the selected clip has on its own track between its neighbours,
+  // mirroring the Timeline's `room()`: `lo` is the end of the last clip that
+  // ends before `start`, `hi` the start of the first that begins at or after
+  // `end` (Infinity when there is none), so a numeric edit can never make two
+  // clips on one track overlap - the renderer refuses those.
+  function gapAround(track: { clips: ProjectClip[] }, clipId: string, start: number, end: number): { lo: number; hi: number } {
+    let lo = 0;
+    let hi = Infinity;
+    for (const o of track.clips) {
+      if (o.id === clipId) continue;
+      const oEnd = o.start + o.duration;
+      if (oEnd <= start + 1e-9) lo = Math.max(lo, oEnd);
+      else if (o.start >= end - 1e-9) hi = Math.min(hi, o.start);
+    }
+    lo = Math.max(0, lo);
+    return { lo, hi: Math.max(lo, hi) };
+  }
+
+  // Commit a typed start or length: clamped to the gap on its track, then one
+  // undo snapshot per committed change. The draft is written back from the
+  // model so a clamped (or rejected) value never stays on screen as a lie.
+  function applyTiming(field: 'start' | 'duration', raw: string) {
+    if (!project || !selection || !selectedClip || !canWrite) return;
+    const s = selectedClip;
+    const track = project.tracks.find((t) => t.id === s.track);
+    if (!track) return;
+    const clip = track.clips.find((c) => c.id === s.clip);
+    if (!clip) return;
+    const n = Number(raw);
+    const current = field === 'start' ? clip.start : clip.duration;
+    if (!Number.isFinite(n)) {
+      if (field === 'start') startDraft = current.toFixed(3);
+      else durationDraft = current.toFixed(3);
+      return;
+    }
+    let changed = false;
+    if (field === 'start') {
+      const g = gapAround(track, clip.id, clip.start, clip.start + clip.duration);
+      const hi = g.hi === Infinity ? Math.max(g.lo, n) : Math.max(g.lo, g.hi - clip.duration);
+      const start = clamp(n, g.lo, hi);
+      if (start !== clip.start) {
+        clip.start = start;
+        changed = true;
+      }
+    } else {
+      const g = gapAround(track, clip.id, clip.start, clip.start + clip.duration);
+      const max = g.hi === Infinity ? Math.max(MIN_CLIP, n) : Math.max(MIN_CLIP, g.hi - clip.start);
+      const duration = clamp(n, MIN_CLIP, max);
+      if (duration !== clip.duration) {
+        clip.duration = duration;
+        changed = true;
+      }
+    }
+    if (changed) {
+      dirty = true;
+      record();
+    }
+    if (field === 'start') startDraft = clip.start.toFixed(3);
+    else durationDraft = clip.duration.toFixed(3);
+  }
+
+  // Remove the selected clip: the row loses it, and the selection forgets it.
+  function deleteClip() {
+    if (!project || !selection || !selectedClip || !canWrite) return;
+    const s = selectedClip;
+    const track = project.tracks.find((t) => t.id === s.track);
+    if (!track) return;
+    const i = track.clips.findIndex((c) => c.id === s.clip);
+    if (i < 0) return;
+    track.clips.splice(i, 1);
+    selectedClip = null;
     dirty = true;
     record();
   }
@@ -694,6 +785,22 @@
           <button type="button" disabled={!canWrite || !downTrack} title="Move to the track below (Ctrl+↓)"
                   onclick={() => { const t = downTrack; if (t) moveSelectedTo(t.id); }}>↓ {downTrack?.name ?? '—'}</button>
         </span>
+        <label class="timing">start
+          <input type="number" min="0" step="0.01" bind:value={startDraft} disabled={!canWrite}
+                 onkeydown={(e) => { if (e.key === 'Enter') { e.preventDefault(); applyTiming('start', String(startDraft)); } }}
+                 aria-label="Clip start, seconds" />
+          <button type="button" disabled={!canWrite} title="Set the clip start" onclick={() => applyTiming('start', String(startDraft))}>set</button>
+        </label>
+        <label class="timing">length
+          <input type="number" min="0" step="0.01" bind:value={durationDraft} disabled={!canWrite}
+                 onkeydown={(e) => { if (e.key === 'Enter') { e.preventDefault(); applyTiming('duration', String(durationDraft)); } }}
+                 aria-label="Clip length, seconds" />
+          <button type="button" disabled={!canWrite} title="Set the clip length" onclick={() => applyTiming('duration', String(durationDraft))}>set</button>
+        </label>
+        <span class="add">
+          <button type="button" class="danger" disabled={!canWrite} title="Remove this clip from its track"
+                  onclick={deleteClip}>delete clip</button>
+        </span>
         <span class="meta">a clip may overlap one on its new track; that renders as picture-in-picture</span>
       </div>
       <EffectsPanel clip={selection} editable={canWrite} onchange={setEffects} onplace={setPlace} ongenerated={setGenerated} />
@@ -784,5 +891,8 @@
   .tl-tools .section-label { margin: 0; }
   .add { display: inline-flex; align-items: center; gap: .35rem; color: var(--dim); font-size: .72rem; }
   .add button { font-size: .72rem; padding: .22rem .55rem; }
+  .timing { display: inline-flex; align-items: center; gap: .3rem; color: var(--dim); font-size: .72rem; }
+  .timing input { width: 6rem; }
+  .timing button { font-size: .68rem; padding: .15rem .4rem; }
   .grow { flex: 1; }
 </style>
