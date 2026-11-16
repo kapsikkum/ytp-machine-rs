@@ -224,13 +224,47 @@ impl AuthStore {
 
     async fn seed_roles(&self) -> Result<()> {
         for r in BUILTIN_ROLES {
-            // Keep any edits an admin made to a built-in; only create it.
+            // Keep any edits an admin made to a built-in, but ADD the permissions
+            // a later version put in the template: otherwise a new permission
+            // never reaches an existing install (the admin role is recomputed on
+            // every read, the other built-ins are stored once). Additive only -
+            // a permission an admin removed from a built-in comes back; a role
+            // that needs a smaller set should be a custom role.
+            let existing: Option<String> = sqlx::query_scalar("SELECT permissions FROM roles WHERE name = ?")
+                .bind(r.name)
+                .fetch_optional(&self.pool)
+                .await?;
+            let merged = match existing {
+                None => perms_json(r.permissions),
+                Some(json) => {
+                    let mut have: Vec<Permission> = serde_json::from_str::<Vec<String>>(&json)
+                        .unwrap_or_default()
+                        .iter()
+                        .filter_map(|s| s.parse::<Permission>().ok())
+                        .collect();
+                    let before = have.len();
+                    for p in r.permissions {
+                        if !have.contains(p) {
+                            have.push(*p);
+                        }
+                    }
+                    if have.len() == before {
+                        // Nothing new: still make sure the row is marked built-in.
+                        sqlx::query("UPDATE roles SET builtin = 1 WHERE name = ?")
+                            .bind(r.name)
+                            .execute(&self.pool)
+                            .await?;
+                        continue;
+                    }
+                    perms_json(&have)
+                }
+            };
             sqlx::query(
                 "INSERT INTO roles (name, builtin, permissions, quota) VALUES (?, 1, ?, ?)
-                 ON CONFLICT(name) DO UPDATE SET builtin = 1",
+                 ON CONFLICT(name) DO UPDATE SET builtin = 1, permissions = excluded.permissions",
             )
             .bind(r.name)
-            .bind(perms_json(r.permissions))
+            .bind(merged)
             .bind(serde_json::to_string(&r.quota)?)
             .execute(&self.pool)
             .await?;
@@ -905,6 +939,38 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let s = AuthStore::open(&dir.path().join("app.db")).await.unwrap();
         (dir, s)
+    }
+
+    #[tokio::test]
+    async fn seeding_adds_new_builtin_permissions_without_dropping_edits() {
+        let (_d, s) = store().await;
+        // An install from before `media.install` existed, plus an admin's own
+        // addition to the editor role.
+        sqlx::query("UPDATE roles SET permissions = ? WHERE name = 'editor'")
+            .bind(r#"["generate.ytp","settings.manage"]"#)
+            .execute(s.pool())
+            .await
+            .unwrap();
+        // A restart re-seeds.
+        s.seed_roles().await.unwrap();
+
+        let editor = s.get_role("editor").await.unwrap();
+        assert!(
+            editor.permissions.contains(&Permission::MediaInstall),
+            "a new template permission must reach an existing install: {:?}",
+            editor.permissions
+        );
+        assert!(
+            editor.permissions.contains(&Permission::SettingsManage),
+            "the admin's own grant must survive: {:?}",
+            editor.permissions
+        );
+        assert!(editor.permissions.contains(&Permission::GenerateYtp));
+
+        // Seeding again changes nothing (the merge is idempotent).
+        let before = editor.permissions.len();
+        s.seed_roles().await.unwrap();
+        assert_eq!(s.get_role("editor").await.unwrap().permissions.len(), before);
     }
 
     #[tokio::test]
