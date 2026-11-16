@@ -5,26 +5,22 @@
   import { can } from '#lib/auth.ts';
   import { ProjectHistory } from '#lib/history.ts';
   import { mixOf, projectDuration, toTimelineTracks, type Effect, type Place, type Project, type ProjectClip, type ProjectMeta, type StoredProject } from '#lib/project.ts';
-  import { TRACK_COLORS, type Track, type TrackKind } from '#lib/timeline.ts';
+  import { type Track, type TrackKind } from '#lib/timeline.ts';
+  import { selectedVoice } from '#lib/voice.ts';
   import { jobEvents, subscribeTopic } from '#lib/ws.ts';
   import TopBar from '#lib/components/TopBar.svelte';
   import VoiceSelect from '#lib/components/VoiceSelect.svelte';
   import EffectsPanel from '#lib/components/studio/EffectsPanel.svelte';
   import PreviewPane from '#lib/components/studio/PreviewPane.svelte';
-  import PromptBox, { type Mode } from '#lib/components/studio/PromptBox.svelte';
   import Timeline from '#lib/components/timeline/Timeline.svelte';
   import ShareDialog from '#lib/components/ShareDialog.svelte';
 
-  // The Studio: preview, prompt, and a multi-track timeline. `?project=<id>`
-  // opens a project (what "Open in Studio" on the Say and Song pages makes):
-  // its tracks and clips are drawn by time, and the preview plays the window
-  // under the playhead, rendered on the server. Editing comes next; for now a
-  // project is read-only apart from the mute/solo switches, which change what
-  // the preview mixes and can be saved.
-  const q = page.url.searchParams;
-  let mode = $state<Mode>(q.get('mode') === 'ytpmv' ? 'ytpmv' : 'ytp');
-  let prompt = $state(q.get('prompt') ?? '');
-
+  // The Studio: a multi-track arrangement over a stored project. `?project=<id>`
+  // opens one (what "Open in Studio" on the Say and Song pages makes). With no
+  // project open there is no timeline to pretend to edit: the page creates a
+  // blank project or lists the recent ones. A project's tracks and clips are
+  // drawn by time, and the preview plays the window under the playhead,
+  // rendered on the server.
   const projectId = $derived.by(() => {
     const n = Number(page.url.searchParams.get('project'));
     return Number.isInteger(n) && n > 0 ? n : null;
@@ -68,7 +64,9 @@
     sharing = false;
     note = '';
     addNote = '';
+    lastPreview = '';
     cancelMove();
+    loading = false;
     if (id === null) {
       if ($can('project.read')) api.projects.list().then((l) => (recent = l)).catch(() => (recent = []));
       return;
@@ -95,44 +93,67 @@
     };
   });
 
-  // Local tracks of an empty Studio (no project open): only the layout.
-  let localTracks = $state<Track[]>([
-    { id: 'v1', name: 'Video 1', kind: 'video', sub: 'picture', color: TRACK_COLORS[0], clips: [] },
-    { id: 'a1', name: 'Voice 1', kind: 'voice', sub: 'corpus voice', color: TRACK_COLORS[1], clips: [] },
-    { id: 'a2', name: 'Music 1', kind: 'audio', sub: 'audio', color: TRACK_COLORS[2], clips: [] }
-  ]);
-  let counter = 3;
   // crates/ytp-core/src/timeline.rs: validate() rejects a document with more.
   const MAX_TRACKS = 256;
 
-  // With a project open the track is a real ProjectTrack (video or audio;
-  // voice/music both map to the project's audio kind), so it can be saved;
-  // without one it is layout only.
-  function addTrack(kind: TrackKind) {
-    if (project) {
-      const pk = kind === 'video' ? 'video' : kind === 'voice' || kind === 'audio' ? 'audio' : null;
-      if (!pk || !canWrite || project.tracks.length >= MAX_TRACKS) return;
-      const label = pk === 'video' ? 'Video' : kind === 'voice' ? 'Voice' : 'Music';
-      const n = project.tracks.filter((t) => t.kind === pk).length + 1;
-      const base = pk === 'video' ? 'v' : 'a';
-      let id = `${base}${n}`;
-      for (let i = n + 1; project.tracks.some((t) => t.id === id); i += 1) id = `${base}${i}`;
-      project.tracks.push({ id, kind: pk, name: `${label} ${n}`, mute: false, solo: false, volume: 1, generated: false, clips: [] });
-      selected = id;
-      dirty = true;
-      record();
-      return;
+  // A blank project: one video track and one voice track, with the top bar's
+  // voice as the project corpus. The server assigns the id and revision.
+  const SIZES: Record<'480' | '720' | '1080', [number, number]> = {
+    '480': [640, 480],
+    '720': [1280, 720],
+    '1080': [1920, 1080]
+  };
+  let newName = $state('');
+  let newSize = $state<'480' | '720' | '1080'>('480');
+  let creating = $state(false);
+  let createError = $state('');
+
+  async function createProject(e: SubmitEvent) {
+    e.preventDefault();
+    if (creating) return;
+    const name = newName.trim() || 'untitled';
+    const [width, height] = SIZES[newSize];
+    const p: Project = {
+      version: 1, // crates/ytp-core/src/timeline.rs: PROJECT_VERSION
+      name,
+      corpus: $selectedVoice || '',
+      fps: 30,
+      width,
+      height,
+      captions: false,
+      tracks: [
+        { id: 'v1', kind: 'video', name: 'Video 1', mute: false, solo: false, volume: 1, generated: false, clips: [] },
+        { id: 'a1', kind: 'audio', name: 'Voice 1', mute: false, solo: false, volume: 1, generated: false, clips: [] }
+      ]
+    };
+    creating = true;
+    createError = '';
+    try {
+      const r = await api.projects.create(p, name);
+      newName = '';
+      await goto(`/?project=${r.id}`);
+    } catch (err) {
+      createError = errorText(err);
+    } finally {
+      creating = false;
     }
-    counter += 1;
-    const label = { video: 'Video', voice: 'Voice', audio: 'Music', midi: 'MIDI', text: 'Text' }[kind];
-    const n = localTracks.filter((t) => t.kind === kind).length + 1;
-    const id = `t${counter}`;
-    localTracks.push({ id, name: `${label} ${n}`, kind, color: TRACK_COLORS[(counter - 1) % TRACK_COLORS.length], clips: [] });
-    selected = id;
   }
-  function removeSelected() {
-    if (selected) localTracks = localTracks.filter((t) => t.id !== selected);
-    selected = null;
+
+  // With a project open the track is a real ProjectTrack (video or audio;
+  // voice/music both map to the project's audio kind), so it can be saved.
+  function addTrack(kind: TrackKind) {
+    if (!project) return;
+    const pk = kind === 'video' ? 'video' : kind === 'voice' || kind === 'audio' ? 'audio' : null;
+    if (!pk || !canWrite || project.tracks.length >= MAX_TRACKS) return;
+    const label = pk === 'video' ? 'Video' : kind === 'voice' ? 'Voice' : 'Music';
+    const n = project.tracks.filter((t) => t.kind === pk).length + 1;
+    const base = pk === 'video' ? 'v' : 'a';
+    let id = `${base}${n}`;
+    for (let i = n + 1; project.tracks.some((t) => t.id === id); i += 1) id = `${base}${i}`;
+    project.tracks.push({ id, kind: pk, name: `${label} ${n}`, mute: false, solo: false, volume: 1, generated: false, clips: [] });
+    selected = id;
+    dirty = true;
+    record();
   }
 
   // The selected track, when it can host a generated clip: the server expands
@@ -195,8 +216,8 @@
     record();
   }
 
-  const tracks = $derived<Track[]>(project ? toTimelineTracks(project) : localTracks);
-  const duration = $derived(project ? Math.max(1, projectDuration(project) + (stored?.kind === 'song' ? 0.8 : 0)) : 30);
+  const tracks = $derived<Track[]>(project ? toTimelineTracks(project) : []);
+  const duration = $derived(project ? Math.max(1, projectDuration(project) + (stored?.kind === 'song' ? 0.8 : 0)) : 0);
   const canWrite = $derived(!!stored && stored.access !== 'read' && $can('project.write'));
   const tooManyTracks = $derived(!!project && project.tracks.length >= MAX_TRACKS);
 
@@ -353,11 +374,7 @@
   }
 
   function flag(id: string, f: 'mute' | 'solo') {
-    if (!project) {
-      const t = localTracks.find((x) => x.id === id);
-      if (t) t[f] = !t[f];
-      return;
-    }
+    if (!project) return;
     const t = project.tracks.find((x) => x.id === id);
     if (t) {
       t[f] = !t[f];
@@ -529,47 +546,23 @@
   {#if loadError}
     <p class="warn" role="alert">{loadError}</p>
   {/if}
-  <div class="upper">
-    <PreviewPane bind:playhead bind:playing {duration} load={loader} {version} note={loading ? 'loading the project…' : ''} />
-    <PromptBox bind:mode bind:prompt />
-  </div>
 
-  {#if !project && !loading && recent.length}
-    <section class="card recent">
-      <div class="section-label">your projects</div>
-      <ul>
-        {#each recent as p (p.id)}
-          <li>
-            <button type="button" class="link" onclick={() => goto(`/?project=${p.id}`)}>{p.name}</button>
-            <span class="meta">{p.kind} · {p.clips} clips · {p.duration.toFixed(1)} s{p.access !== 'owner' ? ` · ${p.access} by ${p.owner_name}` : ''}</span>
-          </li>
-        {/each}
-      </ul>
-    </section>
-  {/if}
+  {#if project}
+    <PreviewPane bind:playhead bind:playing {duration} load={loader} {version} />
 
-  <div class="tl">
-    <div class="tl-tools">
-      <span class="section-label">timeline</span>
-      {#if !project}
-        <span class="add">
-          add track
-          <button type="button" onclick={() => addTrack('video')}>+ video</button>
-          <button type="button" onclick={() => addTrack('voice')}>+ voice</button>
-          <button type="button" onclick={() => addTrack('audio')}>+ music</button>
-          <button type="button" onclick={() => addTrack('midi')}>+ midi</button>
-        </span>
-        <span class="grow"></span>
-        <button type="button" class="danger" disabled={!selected} onclick={removeSelected}>remove track</button>
-      {:else if canWrite}
-        <span class="add">
-          add track
-          <button type="button" disabled={tooManyTracks} onclick={() => addTrack('video')}>+ video</button>
-          <button type="button" disabled={tooManyTracks} onclick={() => addTrack('voice')}>+ voice</button>
-          <button type="button" disabled={tooManyTracks} onclick={() => addTrack('audio')}>+ music</button>
-        </span>
-      {/if}
-      {#if project}
+    <div class="tl">
+      <div class="tl-tools">
+        <span class="section-label">timeline</span>
+        {#if canWrite}
+          <span class="add">
+            add track
+            <button type="button" disabled={tooManyTracks} onclick={() => addTrack('video')}>+ video</button>
+            <button type="button" disabled={tooManyTracks} onclick={() => addTrack('voice')}>+ voice</button>
+            <button type="button" disabled={tooManyTracks} onclick={() => addTrack('audio')}>+ music</button>
+          </span>
+        {:else}
+          <span class="meta">read-only</span>
+        {/if}
         <span class="add">
           add clip
           <button type="button" disabled={!canWrite || !videoTrack}
@@ -577,31 +570,77 @@
                   onclick={addGeneratedClip}>+ generated</button>
           {#if addNote}<span class="note" role="status">{addNote}</span>{/if}
         </span>
-      {/if}
+      </div>
+      <Timeline {tracks} {duration} {selected} selectedClip={selectedClip?.clip ?? null} bind:playhead
+                onselect={(id) => { selected = id; if (selectedClip && selectedClip.track !== id) selectedClip = null; }}
+                onselectclip={(track, clip) => { selected = track; selectedClip = { track, clip }; }}
+                onclipmove={canWrite ? moveClip : undefined}
+                onclipmoveend={canWrite ? endClipMove : undefined}
+                onflag={flag} empty="Add a track to begin." />
     </div>
-    <Timeline {tracks} {duration} {selected} selectedClip={selectedClip?.clip ?? null} bind:playhead
-              onselect={(id) => { selected = id; if (selectedClip && selectedClip.track !== id) selectedClip = null; }}
-              onselectclip={(track, clip) => { selected = track; selectedClip = { track, clip }; }}
-              onclipmove={canWrite ? moveClip : undefined}
-              onclipmoveend={canWrite ? endClipMove : undefined}
-              onflag={flag} empty="Add a track to begin." />
-  </div>
 
-  {#if project && selection}
-    <div class="tl-tools">
-      <span class="section-label">selected clip</span>
-      <span class="add">
-        move to track
-        <button type="button" disabled={!canWrite || !upTrack} title="Move to the track above (Ctrl+↑)"
-                onclick={() => { const t = upTrack; if (t) moveSelectedTo(t.id); }}>↑ {upTrack?.name ?? '—'}</button>
-        <button type="button" disabled={!canWrite || !downTrack} title="Move to the track below (Ctrl+↓)"
-                onclick={() => { const t = downTrack; if (t) moveSelectedTo(t.id); }}>↓ {downTrack?.name ?? '—'}</button>
-      </span>
-      <span class="meta">a clip may overlap one on its new track; that renders as picture-in-picture</span>
+    {#if selection}
+      <div class="tl-tools">
+        <span class="section-label">selected clip</span>
+        <span class="add">
+          move to track
+          <button type="button" disabled={!canWrite || !upTrack} title="Move to the track above (Ctrl+↑)"
+                  onclick={() => { const t = upTrack; if (t) moveSelectedTo(t.id); }}>↑ {upTrack?.name ?? '—'}</button>
+          <button type="button" disabled={!canWrite || !downTrack} title="Move to the track below (Ctrl+↓)"
+                  onclick={() => { const t = downTrack; if (t) moveSelectedTo(t.id); }}>↓ {downTrack?.name ?? '—'}</button>
+        </span>
+        <span class="meta">a clip may overlap one on its new track; that renders as picture-in-picture</span>
+      </div>
+      <EffectsPanel clip={selection} editable={canWrite} onchange={setEffects} onplace={setPlace} ongenerated={setGenerated} />
+    {:else}
+      <p class="meta">Select a clip in the timeline to edit its effects.</p>
+    {/if}
+  {:else if !loading && !loadError}
+    <div class="start">
+      <section class="card start-card">
+        <div class="section-label">new project</div>
+        <form onsubmit={createProject}>
+          <label>name
+            <input type="text" bind:value={newName} maxlength="120" placeholder="untitled" disabled={creating} />
+          </label>
+          <label>size
+            <select bind:value={newSize} disabled={creating}>
+              <option value="480">480p · 640 × 480</option>
+              <option value="720">720p · 1280 × 720</option>
+              <option value="1080">1080p · 1920 × 1080</option>
+            </select>
+          </label>
+          <p class="hint">voice: {$selectedVoice || 'none installed'} · 30 fps · starts with one video and one voice track</p>
+          {#if createError}<p class="warn" role="alert">{createError}</p>{/if}
+          <div><button type="submit" class="primary" disabled={creating}>{creating ? 'creating…' : 'create project'}</button></div>
+        </form>
+      </section>
+
+      <div class="start-side">
+        <section class="card start-card">
+          <div class="section-label">or start from a prompt</div>
+          <p class="hint">The Say and Song pages turn a prompt into a video and can open the result here as an editable project.</p>
+          <div class="start-links">
+            <a class="ghost" href="/ytp">say something</a>
+            <a class="ghost" href="/ytpmv">make a song</a>
+          </div>
+        </section>
+
+        {#if recent.length}
+          <section class="card recent">
+            <div class="section-label">your projects</div>
+            <ul>
+              {#each recent as p (p.id)}
+                <li>
+                  <button type="button" class="link" onclick={() => goto(`/?project=${p.id}`)}>{p.name}</button>
+                  <span class="meta">{p.kind} · {p.clips} clips · {p.duration.toFixed(1)} s{p.access !== 'owner' ? ` · ${p.access} by ${p.owner_name}` : ''}</span>
+                </li>
+              {/each}
+            </ul>
+          </section>
+        {/if}
+      </div>
     </div>
-    <EffectsPanel clip={selection} editable={canWrite} onchange={setEffects} onplace={setPlace} ongenerated={setGenerated} />
-  {:else if project}
-    <p class="meta">Select a clip in the timeline to edit its effects.</p>
   {/if}
 
   {#if sharing && stored}
@@ -616,8 +655,15 @@
   .note.err { color: var(--red); }
   .warn { color: var(--red); font-size: .78rem; margin: 0; }
   .studio { width: min(1440px, 100% - 2rem); margin: 1rem auto 3rem; display: flex; flex-direction: column; gap: 1rem; }
-  .upper { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(280px, 1fr); gap: 1rem; align-items: start; }
-  @media (max-width: 900px) { .upper { grid-template-columns: minmax(0, 1fr); } }
+  .start { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); gap: 1rem; align-items: start; }
+  .start-side { display: flex; flex-direction: column; gap: 1rem; }
+  .start-card { padding: 1rem; display: flex; flex-direction: column; gap: .75rem; }
+  .start-card form { display: flex; flex-direction: column; gap: .6rem; }
+  .start-card label { display: flex; flex-direction: column; gap: .25rem; color: var(--muted); font-size: .72rem; }
+  .start-card input, .start-card select { max-width: 24rem; }
+  .start-card .hint { margin: 0; color: var(--dim); font-size: .72rem; }
+  .start-links { display: flex; gap: .5rem; flex-wrap: wrap; }
+  @media (max-width: 900px) { .start { grid-template-columns: minmax(0, 1fr); } }
   .recent { padding: .75rem 1rem; }
   .recent ul { list-style: none; margin: .4rem 0 0; padding: 0; display: flex; flex-direction: column; gap: .3rem; }
   .recent li { display: flex; gap: .8rem; align-items: baseline; }
