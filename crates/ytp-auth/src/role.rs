@@ -62,6 +62,7 @@ const EDITOR_PERMS: &[Permission] = &[
     CorpusRead,
     CorpusEdit,
     CorpusInstall,
+    MediaInstall,
     JobsViewAll,
     TokensCreate,
 ];

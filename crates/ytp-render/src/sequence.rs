@@ -33,11 +33,24 @@ const FILLER_PIECE: f64 = 10.0;
 /// A clip this long is shortened to the window when its effects allow.
 const LONG_CLIP: f64 = 6.0;
 
+/// Extensions an uploaded asset may have (the media service's allow-list).
+/// A sidecar (`<asset>.json`) is never one of them, so it is never played.
+const MEDIA_EXTS: &[&str] = &[
+    "mp4", "mov", "webm", "mkv", "wav", "mp3", "m4a", "aac", "flac", "ogg", "png", "jpg", "jpeg", "gif", "webp",
+];
+
+/// An asset id as `ClipSource::Media` validates it: 1-64 of `A-Za-z0-9_-`.
+fn valid_asset_id(id: &str) -> bool {
+    !id.is_empty() && id.len() <= 64 && id.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-')
+}
+
 /// Where a render finds things.
 pub struct Env<'a> {
     pub renderer: &'a ytp_media::FfmpegRenderer,
     pub locator: &'a Locator,
-    /// Uploaded assets (`Media` sources) live here as `<asset>.<ext>`.
+    /// The media root. Assets are private to their owner: [`plan`] narrows this
+    /// to `<root>/<owner>/` for the project's owner, and [`Env::media_path`]
+    /// never looks outside it.
     pub media_dir: Option<&'a Path>,
     /// Scratch space for the filler, synthesised clips and intermediate files.
     pub work_dir: &'a Path,
@@ -83,14 +96,41 @@ impl Drop for Made {
 }
 
 impl Env<'_> {
-    /// The file of uploaded asset `asset`.
+    /// The file of uploaded asset `asset`, looked up in this env's media
+    /// directory only — which [`plan`] has already narrowed to the project
+    /// owner's own directory. `None` unless it is a regular file directly
+    /// inside that directory: an asset id comes from a project document, so
+    /// the resolved path must stay there (and a symlink is never followed).
     pub fn media_path(&self, asset: &str) -> Option<PathBuf> {
+        if !valid_asset_id(asset) {
+            return None;
+        }
         let dir = self.media_dir?;
-        std::fs::read_dir(dir)
-            .ok()?
-            .flatten()
-            .map(|e| e.path())
-            .find(|p| p.is_file() && (p.file_stem().is_some_and(|s| s == asset) || p.file_name().is_some_and(|s| s == asset)))
+        let root = dir.canonicalize().ok()?;
+        if !std::fs::metadata(&root).is_ok_and(|m| m.is_dir()) {
+            return None;
+        }
+        for ext in MEDIA_EXTS {
+            let candidate = root.join(format!("{asset}.{ext}"));
+            // `symlink_metadata`: a symlink is not a regular file, so one that
+            // points out of the directory is refused instead of followed.
+            let Ok(meta) = std::fs::symlink_metadata(&candidate) else {
+                continue;
+            };
+            if !meta.file_type().is_file() {
+                continue;
+            }
+            let Ok(real) = candidate.canonicalize() else {
+                continue;
+            };
+            if !real.starts_with(&root) {
+                continue;
+            }
+            if std::fs::metadata(&real).is_ok_and(|m| m.is_file()) {
+                return Some(real);
+            }
+        }
+        None
     }
 
     fn filler(&self) -> Result<PathBuf, Error> {
@@ -144,7 +184,12 @@ fn media_of(env: &Env, clip: &Clip) -> Result<(PathBuf, f64, f64), Error> {
             Ok((path, *in_, *out))
         }
         ClipSource::Media { asset, in_, out } => {
-            let path = env.media_path(asset).ok_or_else(|| Error::Invalid(format!("clip {}: media asset {asset:?} was not found", clip.id)))?;
+            let path = env.media_path(asset).ok_or_else(|| {
+                Error::Invalid(format!(
+                    "clip {}: media asset {asset:?} is not in this project owner's media library",
+                    clip.id
+                ))
+            })?;
             Ok((path, *in_, *out))
         }
         ClipSource::Synth { .. } => Err(Error::Invalid(format!("clip {}: a synth clip has no picture", clip.id))),
@@ -483,6 +528,15 @@ pub fn plan(env: &Env, project: &Project, window: Option<(f64, f64)>) -> Result<
     if project.tracks.iter().any(|t| t.generated) {
         return Err(Error::Invalid("this project is played by its generator, not as a sequence".into()));
     }
+    // Uploaded media is private to the project's owner: every lookup below is
+    // confined to `<media root>/<owner>/`, so a project cannot name an asset id
+    // and reach the renderer's or another user's files. A project with no owner
+    // (not stored) can play no uploaded media at all.
+    let owner_media = match (env.media_dir, project.owner) {
+        (Some(root), Some(owner)) => Some(root.join(owner.to_string())),
+        _ => None,
+    };
+    let env = &Env { media_dir: owner_media.as_deref(), ..*env };
     let total = project.duration();
     if total <= 0.0 {
         return Err(Error::Invalid("the project has no clips".into()));

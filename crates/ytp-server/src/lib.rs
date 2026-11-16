@@ -8,6 +8,7 @@ pub mod encode;
 pub mod error;
 pub mod handlers;
 pub mod jobs;
+pub mod media;
 pub mod projects;
 pub mod routes;
 pub mod state;

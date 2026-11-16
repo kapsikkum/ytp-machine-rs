@@ -23,7 +23,7 @@ Auth is checked before the body is parsed, so an unauthorised request gets 401/4
 `generate.ytp`, `generate.ytpmv`, `studio.use`, `project.read`, `project.write`,
 `project.share`, `export.render`, `export.hq`, `corpus.read`, `corpus.edit`,
 `corpus.install`, `corpus.delete`, `jobs.view_all`, `jobs.cancel_any`,
-`users.manage`, `roles.manage`, `tokens.create`, `settings.manage`, `audit.view`.
+`media.install`, `users.manage`, `roles.manage`, `tokens.create`, `settings.manage`, `audit.view`.
 
 Built-in roles: `admin` (all), `editor`, `creator`, `guest`.
 
@@ -52,7 +52,12 @@ Built-in roles: `admin` (all), `editor`, `creator`, `guest`.
 | GET | /api/corpora | – | `Corpus[]` | corpus.read |
 | POST | /api/corpora/install | multipart `file` (.tar.zst); optional `name` (default: slug of the file name), optional `replace=true` | `Corpus` (name taken 409, bad bundle 422) | corpus.install |
 | DELETE | /api/corpora/:name | – | 204 | corpus.delete |
+| GET | /api/media | `?all=1` (admins only) | `MediaAsset[]` (own; admin `all` = everyone's), each `{ id, name, ext, kind: "video"\|"audio"\|"image", bytes, duration?, width?, height?, video_codec?, audio_codec?, uploaded_at, referenced_by }` | media.install |
+| POST | /api/media | multipart `file`; optional `name` | `MediaAsset` (`referenced_by` 0); 413 over 200 MB, 422 a type outside the allow-list or a file ffprobe finds no stream in | media.install |
+| DELETE | /api/media/:id | – | 204 + `X-Media-Referenced-By` (how many stored projects still name it); unknown or somebody else's 404 | media.install |
 | GET | /api/health | – | `{ ok: true, version }` | public |
+
+**Media assets** are private to the user who uploaded them: files live under `<data>/media/<user id>/<asset id>.<ext>` with ffprobe's reading beside them, and only that user (or an admin) can list or delete them. A project may name an asset in a `media` clip source, but the renderer resolves it inside the *project owner's* directory only, so a project cannot play somebody else's file. Accepted extensions: video `mp4 mov webm mkv`, audio `wav mp3 m4a aac flac ogg`, image `png jpg jpeg gif webp`; at most 200 MB. Nothing expires: an asset lives until `DELETE /api/media/:id`, and `referenced_by` says how many projects still name it.
 
 | POST | /api/ytp/generate | `{ text, voice?, captions?, options? }` | `{ job_id }` | generate.ytp |
 | GET | /api/jobs/:id | – | `Job` | owner, or jobs.view_all |
@@ -251,7 +256,7 @@ ClipSource =
   { type: "corpus_clip", corpus, clip_id?, file?, word?, take?, in, out }  // file is relative to the corpus
 | { type: "media", asset, in, out }                                         // an uploaded asset id
 | { type: "synth", chip, notes: [{ start, dur, pitch, velocity }] }        // chip = a tone name
-| { type: "generated", kind: "ytp"|"ytpmv", prompt, options, seed, corpus? } // must be expanded before rendering (not yet possible)
+| { type: "generated", kind: "ytp"|"ytpmv", prompt, options, seed, corpus? } // kind ytp only: expanded at render/preview, never saved back
 Effect = speed{factor} | stretch{factor} | reverse | pitch{semitones} | volume{db} | stutter
        | mirror | glitch{name} | fade_in{seconds} | fade_out{seconds} | pause{seconds} | subword
 ```

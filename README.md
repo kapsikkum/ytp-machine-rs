@@ -73,11 +73,14 @@ starts `POST /api/jobs/:id/export` with a preset from `GET /api/encode/presets`;
 is served at `GET /api/jobs/:id/result`. `hq` presets need the `export.hq` permission and
 are greyed out without it. A whole project renders with `POST /api/projects/:id/render`.
 
-Known limits: video clips that overlap on one track are still refused, clips on different tracks
-render as a picture-in-picture (half size, bottom right, later track on top) whose own sound is
-dropped and where captions are not drawn, `generated` clip sources cannot render yet, song projects
-are editable at track level only (notes are read-only), and preview windows show the track mix
-rather than every per-clip effect.
+Known limits: video clips that overlap on one track are still refused (clips on different tracks
+render as a picture-in-picture - half size at the bottom right, later track on top, each layer's own
+sound and caption kept, and `Clip.place` sets the box). `generated` clips expand when they render,
+for kind `ytp` only: nesting, audio-track placement and saving the expansion back are refused, and
+the real length wins over the authored placeholder. Uploaded media is private to the uploader (200 MB,
+video/audio/still allow-list) and a project can only play its owner's assets. Song projects are
+editable at track level only (notes are read-only), and preview windows show the track mix rather
+than every per-clip effect.
 
 ## Chat bots
 

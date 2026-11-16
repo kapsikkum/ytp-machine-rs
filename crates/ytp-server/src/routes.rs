@@ -10,7 +10,8 @@ use axum::routing::{on, MethodFilter, MethodRouter};
 use axum::Router;
 use ytp_auth::Permission::{self, *};
 
-use crate::handlers::{admin, auth, corpora, encode, jobs, misc, projects, tokens, ytpmv};
+use crate::handlers::{admin, auth, corpora, encode, jobs, media, misc, projects, tokens, ytpmv};
+use crate::media::MAX_MEDIA_BYTES;
 use crate::{ws, AppState};
 
 /// Who may call a route.
@@ -230,6 +231,15 @@ pub fn api(state: &AppState) -> (Router<AppState>, Vec<RouteSpec>) {
             MAX_BUNDLE_BYTES,
         )
         .delete("/api/corpora/{name}", Perm(CorpusDelete), corpora::delete)
+        // media: uploads private to the user who made them; admins see all
+        .get("/api/media", Perm(MediaInstall), media::list)
+        .post_large(
+            "/api/media",
+            Perm(MediaInstall),
+            media::upload,
+            MAX_MEDIA_BYTES + (1 << 20),
+        )
+        .delete("/api/media/{id}", Perm(MediaInstall), media::delete)
         // events
         .get("/api/ws", Authenticated, ws::handler)
         // later phases: authenticated and permission-checked, then 501

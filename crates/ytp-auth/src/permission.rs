@@ -47,6 +47,7 @@ permissions! {
     CorpusEdit => "corpus.edit",
     CorpusInstall => "corpus.install",
     CorpusDelete => "corpus.delete",
+    MediaInstall => "media.install",
     JobsViewAll => "jobs.view_all",
     JobsCancelAny => "jobs.cancel_any",
     UsersManage => "users.manage",
@@ -102,7 +103,7 @@ mod tests {
 
     #[test]
     fn ids_roundtrip() {
-        assert_eq!(Permission::ALL.len(), 19);
+        assert_eq!(Permission::ALL.len(), 20);
         for p in Permission::ALL {
             assert_eq!(p.as_str().parse::<Permission>().unwrap(), *p);
             let json = serde_json::to_string(p).unwrap();

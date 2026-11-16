@@ -564,6 +564,11 @@ pub async fn preview(st: &AppState, project: Project, owner: i64, start: f64, du
     if !(start.is_finite() && duration.is_finite()) || start < 0.0 || duration <= 0.0 {
         return Err(Error::invalid("a preview needs start >= 0 and duration > 0"));
     }
+    // The renderer confines uploaded media to the project OWNER's directory, so
+    // the owner has to be on the document before anything plans it - a preview
+    // loaded by id is otherwise a project with no owner and no media at all.
+    let mut project = project;
+    project.owner = Some(owner);
     let duration = duration.min(PREVIEW_MAX_SECONDS);
     // Expand before anything looks at the project: the window check, the cache
     // key and the renderer all have to see the clips a prompt really makes. The

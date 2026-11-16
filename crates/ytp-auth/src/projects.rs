@@ -243,4 +243,38 @@ impl AuthStore {
         }
         Ok(())
     }
+
+    /// How many stored projects mention each of `assets` as a `media` clip
+    /// source, across every owner. The document is opaque here, so the count
+    /// is read out of the JSON; an id no project names is absent.
+    pub async fn project_asset_counts(
+        &self,
+        assets: &[String],
+    ) -> Result<std::collections::HashMap<String, i64>> {
+        let mut counts = std::collections::HashMap::new();
+        if assets.is_empty() {
+            return Ok(counts);
+        }
+        let wanted: std::collections::HashSet<&str> = assets.iter().map(String::as_str).collect();
+        let rows: Vec<String> = sqlx::query_scalar("SELECT data FROM projects")
+            .fetch_all(self.pool())
+            .await?;
+        for data in rows {
+            let Ok(v) = serde_json::from_str::<serde_json::Value>(&data) else {
+                continue;
+            };
+            for track in v["tracks"].as_array().into_iter().flatten() {
+                for clip in track["clips"].as_array().into_iter().flatten() {
+                    let source = &clip["source"];
+                    if source["type"] != "media" {
+                        continue;
+                    }
+                    if let Some(id) = source["asset"].as_str().filter(|id| wanted.contains(id)) {
+                        *counts.entry(id.to_string()).or_insert(0) += 1;
+                    }
+                }
+            }
+        }
+        Ok(counts)
+    }
 }
