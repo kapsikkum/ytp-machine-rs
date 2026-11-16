@@ -297,3 +297,56 @@ export interface JobEvent {
   progress: number;
   message?: string;
 }
+
+/** One `GET /api/media` entry; the file is private to its uploader. */
+export interface MediaAsset {
+  id: string;
+  name: string;
+  ext: string;
+  kind: 'video' | 'audio' | 'image';
+  bytes: number;
+  duration?: number;
+  width?: number;
+  height?: number;
+  video_codec?: string;
+  audio_codec?: string;
+  uploaded_at: string;
+  referenced_by: number;
+}
+
+/** One hardware probe from `GET /api/admin/encoders`. */
+export interface EncoderProbe {
+  encoder: string;
+  available: boolean;
+  detail: string;
+}
+
+/** `GET /api/admin/encoders`: the ffmpeg in use, its probes and preset count. */
+export interface EncoderReport {
+  ffmpeg: string;
+  ok: boolean;
+  encoders: EncoderProbe[];
+  presets: number;
+}
+
+/** `GET /api/admin/bots`: non-secret status of the configured chat bots. */
+export interface BotStatus {
+  platform: 'matrix' | 'discord';
+  enabled: boolean;
+  connected: boolean;
+  last_error: string | null;
+  since: string | null;
+  detail: Record<string, unknown>;
+}
+
+export interface BotsReport {
+  service_user: string | null;
+  bots: BotStatus[];
+}
+
+/** A project share (`GET /api/projects/:id/shares`). */
+export interface Share {
+  user_id: number;
+  username: string;
+  access: 'read' | 'write';
+}

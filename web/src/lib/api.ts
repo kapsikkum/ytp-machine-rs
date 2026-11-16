@@ -1,9 +1,12 @@
 import type {
   AuditEntry,
   AuthStateResponse,
+  BotsReport,
   Corpus,
+  EncoderReport,
   JobRecord,
   LoginResponse,
+  MediaAsset,
   MidiAnalysis,
   MidiEntry,
   PartSettingsJson,
@@ -11,6 +14,7 @@ import type {
   Recommended,
   Role,
   Quota,
+  Share,
   Token,
   User,
   YtpmvInfo
@@ -237,7 +241,9 @@ export const api = {
       remove: (name: string) => request<void>(`/admin/roles/${enc(name)}`, json('DELETE'))
     },
     audit: (q: { limit?: number; before?: number } = {}) =>
-      request<AuditEntry[]>('/admin/audit', { query: { limit: q.limit, before: q.before } })
+      request<AuditEntry[]>('/admin/audit', { query: { limit: q.limit, before: q.before } }),
+    encoders: () => request<EncoderReport>('/admin/encoders'),
+    bots: () => request<BotsReport>('/admin/bots')
   },
 
   tokens: {
@@ -255,6 +261,17 @@ export const api = {
       return request<Corpus>('/corpora/install', { method: 'POST', form });
     },
     remove: (name: string) => request<void>(`/corpora/${enc(name)}`, json('DELETE'))
+  },
+
+  media: {
+    list: () => request<MediaAsset[]>('/media'),
+    upload: (file: File, name?: string) => {
+      const form = new FormData();
+      form.append('file', file);
+      if (name?.trim()) form.append('name', name.trim());
+      return request<MediaAsset>('/media', { method: 'POST', form });
+    },
+    remove: (id: string) => request<void>(`/media/${enc(id)}`, json('DELETE'))
   },
 
   ytp: {
@@ -303,6 +320,10 @@ export const api = {
     update: (id: number, b: { project?: Project; name?: string; revision?: number }) =>
       request<StoredProject>(`/projects/${id}`, json('PATCH', b)),
     remove: (id: number) => request<void>(`/projects/${id}`, json('DELETE')),
+    shares: (id: number) => request<Share[]>(`/projects/${id}/shares`),
+    share: (id: number, b: { username: string; access: 'read' | 'write' }) =>
+      request<Share[]>(`/projects/${id}/shares`, json('POST', b)),
+    unshare: (id: number, username: string) => request<void>(`/projects/${id}/shares/${enc(username)}`, json('DELETE')),
     render: (id: number) => request<{ job_id: string }>(`/projects/${id}/render`, json('POST'))
   },
   /** A low-res render of a window of a project. */
