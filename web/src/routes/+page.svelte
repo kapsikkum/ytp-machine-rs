@@ -12,6 +12,7 @@
   import VoiceSelect from '#lib/components/VoiceSelect.svelte';
   import EffectsPanel from '#lib/components/studio/EffectsPanel.svelte';
   import PreviewPane from '#lib/components/studio/PreviewPane.svelte';
+  import StartPrompt from '#lib/components/studio/StartPrompt.svelte';
   import Timeline from '#lib/components/timeline/Timeline.svelte';
   import ShareDialog from '#lib/components/ShareDialog.svelte';
   import ExportDialog from '#lib/components/ExportDialog.svelte';
@@ -52,6 +53,10 @@
   // half-typed number never lands in the project (or its undo history).
   let startDraft = $state<string | number>('');
   let durationDraft = $state<string | number>('');
+  // The selected track's name and volume are drafts the track toolbar commits,
+  // exactly like the clip's timing fields.
+  let trackNameDraft = $state('');
+  let trackVolumeDraft = $state<string | number>('');
 
   // Renaming happens in place: the subbar turns the name into a field the
   // visitor types, and only the new name is posted (crates/ytp-server/src/
@@ -176,6 +181,10 @@
   // one on a video track only (crates/ytp-server/src/projects.rs).
   const videoTrack = $derived(project?.tracks.find((t) => t.id === selected && t.kind === 'video') ?? null);
 
+  // The selected track whatever its kind: the track toolbar renames, volumes,
+  // reorders and deletes it.
+  const selectedTrack = $derived(project?.tracks.find((t) => t.id === selected) ?? null);
+
   // A generated clip is the cheapest clip to author: a prompt and a seed, and
   // the server cuts it at render/preview time. Its duration here is only a
   // placeholder - the expansion's real length wins and later clips on the track
@@ -187,6 +196,8 @@
   const MIN_CLIP = 0.05;
   // Why the last "+ generated" click added nothing; shown by the toolbar.
   let addNote = $state('');
+  // What the next "+ generated" clip should say; cleared once it is added.
+  let generatedPrompt = $state('');
 
   // The room a clip added at `at` has on a track: up to the start of the next
   // clip that begins at or after it (Infinity when there is none), or null when
@@ -223,9 +234,10 @@
       id,
       start,
       duration,
-      source: { type: 'generated', kind: 'ytp', prompt: '', options: {}, seed: '', corpus: undefined },
+      source: { type: 'generated', kind: 'ytp', prompt: generatedPrompt.trim(), options: {}, seed: '', corpus: undefined },
       effects: []
     });
+    generatedPrompt = '';
     selected = track.id;
     selectedClip = { track: track.id, clip: id };
     dirty = true;
@@ -254,6 +266,15 @@
     if (!s) return;
     startDraft = s.start.toFixed(3);
     durationDraft = s.duration.toFixed(3);
+  });
+
+  // Same for the selected track: a new selection, an undo or another project
+  // puts its real name and volume back in the fields before the visitor types.
+  $effect(() => {
+    const t = selectedTrack;
+    if (!t) return;
+    trackNameDraft = t.name;
+    trackVolumeDraft = t.volume;
   });
 
   // Effects edits from the panel: change the clip, then record the state so
@@ -511,6 +532,75 @@
       dirty = true;
       record();
     }
+  }
+
+  // The selected track's own edits, one undo snapshot each: a name, a volume,
+  // the track order (the order of `tracks` is the layer order the renderer
+  // composites in) or the track and every clip it carried.
+
+  // Rename in the document only: the track's name is local to the project, so
+  // nothing is posted and no request flag is needed.
+  function renameTrack() {
+    if (!project || !selectedTrack || !canWrite) return;
+    const name = trackNameDraft.trim();
+    if (!name || name.length > 120) return;
+    if (name === selectedTrack.name) return;
+    selectedTrack.name = name;
+    trackNameDraft = name;
+    dirty = true;
+    record();
+  }
+
+  // Volume is 0..4, 1 being unity. A value that is not a number leaves the
+  // track alone and puts the real volume back in the field, and a clamped one
+  // is written back too, so the draft never shows a lie.
+  function setTrackVolume() {
+    if (!project || !selectedTrack || !canWrite) return;
+    const n = Number(trackVolumeDraft);
+    if (!Number.isFinite(n)) {
+      trackVolumeDraft = selectedTrack.volume;
+      return;
+    }
+    const v = Math.min(4, Math.max(0, n));
+    if (v === selectedTrack.volume) {
+      trackVolumeDraft = v;
+      return;
+    }
+    selectedTrack.volume = v;
+    trackVolumeDraft = v;
+    dirty = true;
+    record();
+  }
+
+  // Swap the track with its neighbour above or below. The clips keep their
+  // places, so only what covers what changes.
+  function moveTrack(dir: -1 | 1) {
+    if (!project || !selectedTrack || !canWrite) return;
+    const i = project.tracks.findIndex((t) => t.id === selectedTrack.id);
+    const to = i + dir;
+    if (i < 0 || to < 0 || to >= project.tracks.length) return;
+    const other = project.tracks[to];
+    project.tracks[to] = project.tracks[i];
+    project.tracks[i] = other;
+    dirty = true;
+    record();
+  }
+
+  // Deleting a track drops its clips too, which no undo can bring back once
+  // the save has posted it, so the visitor has to confirm the loss.
+  function deleteTrack() {
+    if (!project || !selectedTrack || !canWrite) return;
+    const n = selectedTrack.clips.length;
+    const name = selectedTrack.name || selectedTrack.id;
+    const sure = n > 0 ? confirm(`Delete ${name} and its ${n} clip(s)?`) : confirm(`Delete ${name}?`);
+    if (!sure) return;
+    const i = project.tracks.findIndex((t) => t.id === selectedTrack.id);
+    if (i < 0) return;
+    project.tracks.splice(i, 1);
+    if (selectedClip && selectedClip.track === selectedTrack.id) selectedClip = null;
+    selected = null;
+    dirty = true;
+    record();
   }
 
   // Mirror the history edges into reactive flags so the toolbar can react.
@@ -788,6 +878,9 @@
         {/if}
         <span class="add">
           add clip
+          <input type="text" class="gen-prompt" bind:value={generatedPrompt} maxlength="4000"
+                 placeholder="what should it say?" aria-label="Generated clip prompt"
+                 disabled={!canWrite || !videoTrack} />
           <button type="button" disabled={!canWrite || !videoTrack}
                   title={!canWrite ? 'Read-only access' : videoTrack ? 'A generated clip: the placeholder is clamped to the gap before the next clip; the real length is decided when it renders' : 'Select a video track first'}
                   onclick={addGeneratedClip}>+ generated</button>
@@ -801,6 +894,31 @@
                 onclipmoveend={canWrite ? endClipMove : undefined}
                 onflag={flag} empty="Add a track to begin." />
     </div>
+
+    {#if project && selectedTrack}
+      <div class="tl-tools">
+        <span class="section-label">selected track</span>
+        {#if canWrite}
+          <label class="timing">name
+            <input type="text" maxlength="120" bind:value={trackNameDraft} aria-label="Track name" />
+            <button type="button" title="Rename this track" onclick={renameTrack}>set</button>
+          </label>
+          <label class="timing">volume
+            <input type="number" min="0" max="4" step="0.05" bind:value={trackVolumeDraft} aria-label="Track volume" />
+            <button type="button" title="Set this track's volume" onclick={setTrackVolume}>set</button>
+          </label>
+          <span class="add">
+            move
+            <button type="button" title="Move track up" onclick={() => moveTrack(-1)}>↑</button>
+            <button type="button" title="Move track down" onclick={() => moveTrack(1)}>↓</button>
+          </span>
+          <button type="button" class="danger" title="Delete this track and its clips"
+                  onclick={deleteTrack}>delete track</button>
+        {:else}
+          <span class="meta">read-only</span>
+        {/if}
+      </div>
+    {/if}
 
     {#if selection}
       <div class="tl-tools">
@@ -858,14 +976,7 @@
       </section>
 
       <div class="start-side">
-        <section class="card start-card">
-          <div class="section-label">or start from a prompt</div>
-          <p class="hint">The Say and Song pages turn a prompt into a video and can open the result here as an editable project.</p>
-          <div class="start-links">
-            <a class="ghost" href="/ytp">say something</a>
-            <a class="ghost" href="/ytpmv">make a song</a>
-          </div>
-        </section>
+        <StartPrompt />
 
         {#if recent.length}
           <section class="card recent">
@@ -910,7 +1021,6 @@
   .start-card label { display: flex; flex-direction: column; gap: .25rem; color: var(--muted); font-size: .72rem; }
   .start-card input, .start-card select { max-width: 24rem; }
   .start-card .hint { margin: 0; color: var(--dim); font-size: .72rem; }
-  .start-links { display: flex; gap: .5rem; flex-wrap: wrap; }
   @media (max-width: 900px) { .start { grid-template-columns: minmax(0, 1fr); } }
   .recent { padding: .75rem 1rem; }
   .recent ul { list-style: none; margin: .4rem 0 0; padding: 0; display: flex; flex-direction: column; gap: .3rem; }
@@ -920,8 +1030,10 @@
   .tl-tools .section-label { margin: 0; }
   .add { display: inline-flex; align-items: center; gap: .35rem; color: var(--dim); font-size: .72rem; }
   .add button { font-size: .72rem; padding: .22rem .55rem; }
+  .gen-prompt { width: 14rem; font-size: .72rem; padding: .2rem .45rem; }
   .timing { display: inline-flex; align-items: center; gap: .3rem; color: var(--dim); font-size: .72rem; }
   .timing input { width: 6rem; }
   .timing button { font-size: .68rem; padding: .15rem .4rem; }
+  .tl-tools input[type=text] { width: 12rem; }
   .grow { flex: 1; }
 </style>
